@@ -10,9 +10,11 @@ function scenario(shooterId, mapId) {
   let clock = 100000;
   function make(id) {
     const dom = {};
+    const win = {};
     const order = [];
     const canvases = {scene:{}, weapon:{}};
-    const client = {id, order, feed:[], frames: 0};
+    const client = {id, order, feed:[], frames:0, lockRequests:0, audioRequests:0};
+    canvases.scene.requestPointerLock = () => {client.lockRequests++;};
     const spots = {
       dock:[0,0], rail:[3,5], warehouse:[-4,-4]
     };
@@ -40,7 +42,8 @@ function scenario(shooterId, mapId) {
       addEventListener(event,fn) {dom[event]=fn;}, getElementById:id=>canvases[id],
       querySelector(){return null;}, pointerLockElement: null
     };
-    const window = {Arena, LAN, UI:ui, addEventListener(){}};
+    const window = {Arena, LAN, UI:ui, addEventListener(event,fn){win[event]=fn;},
+      AudioContext:class {constructor(){client.audioRequests++;throw Error('No audio device in test');}}};
     const math = Object.create(Math);
     math.random = () => .5;
     const context = vm.createContext({window, document, performance:{now:()=>clock}, Math:math,
@@ -52,6 +55,8 @@ function scenario(shooterId, mapId) {
     client.lan = LAN;
     client.arena = Arena;
     client.press = down=>dom[down?'mousedown':'mouseup']({button:0,buttons:down?1:0,target:canvases.scene});
+    client.blur = ()=>win.blur();
+    client.key = (down,code)=>dom[down?'keydown':'keyup']({code,target:canvases.scene,preventDefault(){}});
     clients.set(id, client);
     return client;
   }
@@ -84,8 +89,22 @@ function scenario(shooterId, mapId) {
     assert.deepEqual(client.order.slice(0,2),['select '+mapId,'init']);
     assert.equal(client.game.respawnSeconds,15);
     assert.equal(client.game.state.map,mapId);
+    assert.equal(client.game.state.phase,'playing');
+    assert.equal(client.game.state.controlsEngaged,false);
+    assert.equal(client.lockRequests,0);
+    assert.equal(client.audioRequests,0);
+    client.blur();
+    assert.equal(client.game.state.phase,'playing');
     deliver();
-    if (client===host) advance(1000);
+    if (client===host) {
+      const startZ=host.game.state.z;
+      host.key(true,'KeyW');advance(250);host.key(false,'KeyW');
+      assert(host.game.state.z<startZ);
+      host.key(true,'KeyS');advance(250);host.key(false,'KeyS');
+      advance(500);
+      assert.equal(host.game.state.secondsLeft,300);
+      assert.equal(host.game.state.actors.length,0);
+    }
   }
   assert.equal(host.game.state.actors.length,1);
   assert.equal(guest.game.state.z,guest.arena.map.spawns[1].z);
@@ -93,6 +112,12 @@ function scenario(shooterId, mapId) {
   assert.equal(host.game.state.z,guest.game.state.actors[0].z);
   advance(2300);
   const shooter=clients.get(shooterId), target=clients.get(shooterId==='H'?'G':'H');
+  const initialAmmo=shooter.game.state.ammo;
+  shooter.press(true);advance(350);shooter.press(false);
+  assert.equal(shooter.game.state.controlsEngaged,true);
+  assert.equal(shooter.lockRequests,1);
+  assert.equal(shooter.audioRequests,1);
+  assert.equal(shooter.game.state.ammo,initialAmmo);
   function authoritativeHp() {
     return target===host ? host.game.state.hp : host.game.state.actors[0].hp;
   }

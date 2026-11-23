@@ -1,8 +1,12 @@
 (() => {
   'use strict';
-  function command() {
+  function command(room,map) {
     const source = new URL(window.location.href);
     if (source.protocol !== 'file:') return '';
+    const target=new URLSearchParams();
+    target.set('room',room||source.searchParams.get('room')||'灰港');
+    target.set('map',map||source.searchParams.get('map')||'dock');
+    const query=target.toString();
     source.hash = '';
     source.search = '';
     // Pass a file URI so Windows can resolve drive letters, UNC paths and escaped characters.
@@ -14,8 +18,8 @@
       "$greyportHtml=[IO.File]::ReadAllText(([uri]'" + fileUri + "').LocalPath)",
       "$greyportCode=[regex]::Match($greyportHtml,'" + dataBlock + "').Groups[1].Value",
       "if(-not ('" + typeName + "' -as [type])){Add-Type -ErrorAction Stop -ReferencedAssemblies System.dll,System.Core.dll,System.Web.dll,System.Web.Extensions.dll -TypeDefinition $greyportCode}",
-      "$greyportServer=[" + typeName + "]::OpenPage($greyportHtml,'0.0.0.0',8787,$true)",
-      "try { [void](Read-Host '按回车关闭大厅') } finally { $greyportServer.Dispose() }"
+      "$greyportServer=[" + typeName + "]::OpenMatch($greyportHtml,'0.0.0.0',8787,$true,'"+query+"')",
+      "if ($null -ne $greyportServer) { try { [void](Read-Host '按回车结束联机') } finally { $greyportServer.Dispose() } }"
     ].join('; ');
   }
   window.SingleFileHost = Object.freeze({command});

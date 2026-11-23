@@ -4,7 +4,42 @@
   let generation = 0;
   const listeners = { game: new Set(), peers: new Set(), close: new Set() };
   let lobbyAddress = '';
-  const localHelp = '由一台 Windows 电脑打开游戏 HTML，在房间大厅复制开房命令并用 Windows PowerShell 运行。其他玩家打开同一个局域网地址。';
+  const localHelp = '打开游戏菜单中的联机选项，在 Windows PowerShell 运行本机开服命令。朋友打开同一个对局地址即可加入。';
+  const defaultRoom='灰港';
+  const validMap=value=>['dock','rail','warehouse'].includes(value);
+
+  function route() {
+    const params=new URL(location.href).searchParams;
+    const map=params.get('map');
+    return {room:params.get('room')?.trim()||defaultRoom,map:validMap(map)?map:'dock'};
+  }
+  function playUrl(origin, room=defaultRoom, map='dock') {
+    const address=new URL('/',origin);
+    if(!['http:', 'https:'].includes(address.protocol))throw new Error('对局地址需要使用 HTTP 或 HTTPS。');
+    address.searchParams.set('room',room);
+    address.searchParams.set('map',validMap(map)?map:'dock');
+    return address.href;
+  }
+  function loopback(hostname) {
+    return hostname==='localhost'||hostname==='[::1]'||/^127\./.test(hostname);
+  }
+  function sharedAddress(suggested) {
+    // Keep the interface the player actually reached on machines with multiple network adapters.
+    if(/^https?:$/.test(location.protocol)&&!loopback(location.hostname))return location.origin;
+    return suggested&&!loopback(new URL(suggested).hostname)?suggested:'';
+  }
+  async function probeLocalHost() {
+    if(location.protocol!=='file:')return '';
+    const origin='http://127.0.0.1:8787';
+    const abort=new AbortController();
+    const timeout=setTimeout(()=>abort.abort(),750);
+    try {
+      const r=await fetch(origin+'/api/identity',{signal:abort.signal,credentials:'omit',cache:'no-store',redirect:'error'});
+      const info=r.ok?await r.json():null;
+      return info?.game==='greyport-arena'&&info.directPlay===1?origin:'';
+    } catch { return ''; }
+    finally { clearTimeout(timeout); }
+  }
 
   function subscribe(group, fn) {
     listeners[group].add(fn);
@@ -38,7 +73,7 @@
       return result;
     } catch (error) {
       if (error.status) throw error;
-      throw new Error('无法连接局域网大厅。' + localHelp);
+      throw new Error('无法连接对局服务。' + localHelp);
     } finally {
       clearTimeout(deadline);
     }
@@ -51,15 +86,18 @@
     }
   }
 
-  function leave() {
-    generation++;
-    if (!session) return;
-    const current = session;
-    session = null;
+  function closeSession(current) {
+    if (!current || current.localOnly) return;
     current.events.close();
     clearTimeout(current.lostTimer);
     clearTimeout(current.flushTimer);
     release(current.token);
+  }
+  function leave() {
+    generation++;
+    const current=session;
+    session=null;
+    closeSession(current);
   }
 
   function lost(current, reason) {
@@ -68,21 +106,41 @@
     publish('close', reason);
   }
 
-  async function begin(action, data) {
-    if (!/^https?:$/.test(location.protocol)) throw new Error(localHelp);
-    leave();
-    const stamp = generation;
-    let info;
-    try {
-      info = await request(action, data);
-    } catch (error) {
-      throw error;
+  function localSession(action,data) {
+    const room=String(data.room||'').normalize('NFKC').trim().replace(/\s+/g,' ');
+    const name=String(data.name||'').trim();
+    if(!room||Array.from(room).length>24||/[\u0000-\u001f\u007f\u202a-\u202e\u2066-\u2069]/u.test(room))throw new Error('房间名须为 1–24 个字符。');
+    if(!name||Array.from(name).length>16)throw new Error('玩家代号须为 1–16 个字符。');
+    if(!validMap(data.map))throw new Error('请选择有效的地图。');
+    if (session?.room.toLowerCase()===room.toLowerCase()) {
+      if(action==='create')throw new Error('房间名已被使用。');
+      return session;
     }
+    const id='local-host';
+    return {id,hostId:id,room,map:data.map,role:'host',peers:[{id,name}],backlog:[],localOnly:true,lanUrl:''};
+  }
+  async function begin(action, data) {
+    const stamp=++generation;
+    // Re-entering the current room must not evict its host or count this player twice.
+    if(action!=='create' && session &&
+        session.room.toLowerCase()===String(data.room).normalize('NFKC').trim().replace(/\s+/g,' ').toLowerCase()) {
+      const {room,map,id,hostId,role,peers,lanUrl}=session;
+      return {room,map,id,hostId,role,peers,lanUrl};
+    }
+    if(location.protocol==='file:') {
+      const next=localSession(action,data);
+      session=next;
+      return {room:next.room,map:next.map,id:next.id,hostId:next.hostId,role:next.role,peers:next.peers,lanUrl:''};
+    }
+    const info=await request(action,data);
     if (stamp !== generation) {
       release(info.token);
       throw new Error('已取消连接。');
     }
-    const events = new EventSource('/api/events?token=' + encodeURIComponent(info.token));
+    let events;
+    try { events = new EventSource('/api/events?token=' + encodeURIComponent(info.token)); }
+    catch (error) { release(info.token);throw error; }
+    closeSession(session);
     const current = session = {
       ...info, events, outgoing: [], backlog: [], sending: false, seq: 0, flushTimer: 0, lostTimer: 0
     };
@@ -112,7 +170,7 @@
       }
     };
     const { room, map, id, hostId, peers, lanUrl, role } = info;
-    lobbyAddress = lanUrl;
+    lobbyAddress = sharedAddress(lanUrl);
     return { room, map, id, hostId, peers, lanUrl, role };
   }
 
@@ -146,7 +204,10 @@
 
   window.LAN = {
     hint: localHelp,
+    route,playUrl,probeLocalHost,
     get available() { return /^https?:$/.test(location.protocol); },
+    get localOnly() { return Boolean(session?.localOnly); },
+    get shareUrl() { return session && lobbyAddress && !session.localOnly ? playUrl(lobbyAddress,session.room,session.map) : ''; },
     get active() { return Boolean(session); },
     get id() { return session?.id || ''; },
     get hostId() { return session?.hostId || ''; },
@@ -157,11 +218,12 @@
     async listRooms() {
       const result = await request('rooms');
       if (!Array.isArray(result.rooms)) throw new Error(localHelp);
-      lobbyAddress = result.lanUrl;
+      lobbyAddress = sharedAddress(result.lanUrl);
       return result.rooms;
     },
     createRoom(room, name, map = 'dock') { return begin('create', { room, name, map }); },
-    joinRoom(room,name) { return begin('join', { room, name }); },
+    joinRoom(room,name) { return begin('join', { room, name, map:'dock' }); },
+    enterRoom(room,name,map='dock') { return begin('enter', { room, name, map }); },
     leave,
     onMessage(fn) {
       const stop = subscribe('game', fn);

@@ -11,9 +11,9 @@ async function inlineAsset(name, mime) {
   return 'data:' + mime + ';base64,' + data.toString('base64');
 }
 
-const [page, style, poster, font, sky, face, fontLicense, weapon, arena,
+const [page, style, font, sky, face, fontLicense, weapon, arena,
   lan, game, icons, map, ui, hostSource, hostHelper] = await Promise.all([
-  read('lobby.html'), read('style.css'), inlineAsset('greyport.webp', 'image/webp'),
+  read('lobby.html'), read('style.css'),
   inlineAsset('barlow-condensed.ttf', 'font/ttf'), inlineAsset('harbor-sky.webp', 'image/webp'),
   inlineAsset('operator-face.webp', 'image/webp'), read('assets/OFL.txt'),
   read('weapon.js'), read('arena.js'), read('room-lan.js'), read('game.js'), read('icons.js'),
@@ -26,7 +26,7 @@ const lobby = hostSource.replace(/\bGreyportLobby\b/g, hostType);
 if (/<\/script\b/i.test(lobby)) throw new Error('Unexpected HTML delimiter in host source');
 
 const sections = {
-  STYLE: style.replace('__POSTER__', () => poster).replace('__FONT__', () => font),
+  STYLE: style.replace('__FONT__', () => font),
   WEAPON: weapon,
   ARENA: arena.replace('__GREYPORT_SKY_DATA__', () => sky).replace('__GREYPORT_FACE_DATA__', () => face),
   LAN: hostHelper.replace('__GREYPORT_HOST_TYPE__', hostType) + '\n' + lan,

@@ -2,47 +2,18 @@
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="theme-color" content="#151817">
 <title>灰港战线 · GREYPORT ARENA</title>
 <style>/*__STYLE__*/</style></head>
-<body data-screen="menu">
-<div id="lobby">
-<header class="topbar">
-  <div class="brand"><svg viewBox="0 0 42 42" aria-hidden="true"><path fill="currentColor" d="M1 32 18 3h9L10 32zm14 0 15-25 5 8-10 17zm15 0 7-12 5 8-2 4z"/></svg><div><strong>灰港战线</strong><small>GREYPORT ARENA</small></div></div>
-  <nav aria-label="主导航"><button id="navHome" class="navitem active"><i data-i="grid"></i>作战大厅</button><button id="navArm" class="navitem"><i data-i="case"></i>武器库</button></nav>
-  <div class="toptools"><button id="help" class="helpbtn"><i data-i="keyboard"></i><span>操作指南</span></button><b class="vr"></b><button id="sound" class="iconbtn" aria-label="关闭音效" title="关闭音效"><i data-i="volume"></i></button><button id="fullscreen" class="iconbtn" aria-label="全屏" title="全屏"><i data-i="expand"></i></button></div>
-</header>
-<main>
-<section class="hero">
-  <div class="heroArt"></div><div class="heroShade"></div>
-  <div class="heroContent"><div class="operation"><b></b> 作战区域 <span>//</span> OPERATION ZONE</div>
-  <h1>GREYPORT</h1><h2>灰港战线</h2>
-  <p>与好友进入同一房间，在码头、铁路与仓库之间交锋。</p>
-  <div class="tags"><span><i data-i="map"></i>3 张地图</span><span><i data-i="target"></i>自由混战</span><span><i data-i="timer"></i>15 秒复活</span></div></div>
-  <div class="sceneCaption"><i></i> GREYPORT <b>/</b> CONTAINER TERMINAL</div>
-</section>
-<section class="deck">
- <section class="deployment"><div class="sectiontitle"><b></b><h2>局域网对战</h2><small>MULTIPLAYER</small></div>
-   <div class="launchpanel"><div class="cardart networkart" aria-hidden="true"></div><h3>与好友同场竞技</h3><p>选择已有房间，或选一张地图创建新房间。</p><button id="multi" class="launchbutton"><i data-i="network"></i>进入房间大厅 <span aria-hidden="true">→</span></button></div>
- </section>
- <section class="controls"><div class="sectiontitle"><b></b><h2>操作说明</h2><small>CONTROLS</small></div>
-   <div class="controlpanel"><dl class="quickkeys">
-   <div><dt>移动</dt><dd><kbd>WASD</kbd></dd></div><div><dt>转动视角</dt><dd><kbd>移动鼠标</kbd></dd></div>
-   <div><dt>开火</dt><dd><kbd>鼠标左键</kbd></dd></div><div><dt>举枪瞄准</dt><dd><kbd>鼠标右键</kbd></dd></div>
-   <div><dt>换弹</dt><dd><kbd>R</kbd></dd></div><div><dt>切换武器</dt><dd><kbd>1 / 2 / 3</kbd></dd></div>
-   <div><dt>单发 / 连发</dt><dd><kbd>B</kbd></dd></div><div><dt>战斗菜单</dt><dd><kbd>Esc</kbd></dd></div>
-   </dl></div>
- </section>
- <section class="intel"><div class="sectiontitle"><b></b><h2>战区简报</h2><small>MAP INTEL</small></div><button id="mapBtn" class="mapcard" aria-label="浏览三张地图的战区简报"><canvas id="miniPlot" aria-hidden="true"></canvas><span class="mapbadge" id="mapCode"></span><span class="maplabel"><span><i data-i="pin"></i><b id="mapName"></b></span><span class="maplink">浏览地图 <i data-i="expand"></i></span></span></button></section>
-</section></main>
-<footer><span><b class="statusdot"></b> 系统就绪 <em>/</em> <small>SYSTEM ONLINE</small></span><span class="footend">GREYPORT ARENA <em>//</em> <strong>H5 EDITION</strong></span></footer>
-</div>
+<body data-screen="connecting">
 <div id="battle"><canvas id="scene"></canvas><canvas id="weapon"></canvas>
+ <p id="entryStatus" role="status">正在进入战区…</p>
  <div id="hud"><div class="topleft"><canvas id="radar" width="180" height="135"></canvas><div class="radartag"><i data-i="pin"></i><span id="radarMap"></span></div></div>
- <div class="clock"><span>自由混战</span><b id="timer">05:00</b></div><div class="topright"><button id="pause" class="hudbtn" title="暂停" aria-label="暂停"><i data-i="pause"></i></button><div id="killfeed"></div></div>
+ <div class="clock"><span>自由混战</span><b id="timer">05:00</b></div><div class="topright"><button id="shareMatch" class="hudbtn sharebtn" type="button"><i data-i="network"></i> 分享对局</button> <button id="pause" class="hudbtn" title="战斗菜单（Esc）" aria-label="战斗菜单"><i data-i="pause"></i></button><div id="killfeed"></div></div>
  <div id="cross" aria-hidden="true"><b></b><b></b><b></b><b></b></div><div id="marker" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
  <div id="elimination" role="status"><span>击败</span><strong id="defeatedName"></strong></div>
  <div class="vitals"><div class="healthrow"><i data-i="medical"></i><b id="hp">100</b><small>HP</small></div><div class="healthtrack"><b id="hpbar"></b></div><div class="scoreline"><span>击败 <b id="kills">0</b></span><span>阵亡 <b id="deaths">0</b></span></div></div>
  <div class="munition"><div id="weapLabel">AR-24</div><div><b id="ammo">30</b> <span>/</span> <em id="reserve">90</em></div>
  <div id="fireSetting"><i class="burstGlyph" aria-hidden="true"><i></i><i></i><i></i></i><strong id="fireModeLabel">连发</strong><kbd id="fireModeKey">B</kbd></div>
  <div id="reloadMeter" hidden><small id="gunstatus">换弹中</small><div class="reloadTrack"><i id="reloadFill"></i></div></div></div>
+ <div id="fieldHint"><strong>点击画面控制视角</strong><span>WASD 移动 · 左键开火 · R 换弹 · Esc 菜单</span></div>
  <div id="roomtag"></div><div id="hurt"></div></div>
  <div id="matchOverlay" hidden><div class="matchcard"><div class="eyebrow" id="matchEn"></div><h2 id="matchTitle"></h2><p id="matchText"></p><div id="matchMore"></div><div id="matchActions"></div></div></div>
 </div>

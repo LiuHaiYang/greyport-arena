@@ -106,18 +106,18 @@ public static class GreyportLobby
     }
     static object Join(string route, Dictionary<string, object> data) {
         string name = Label(data,"name",16), display = Label(data,"room",24);
-        bool create = route == "/api/create";
         Room r;
         bool exists = Rooms.TryGetValue(display, out r);
-        if (create && exists) throw new Problem(409,"房间名已被使用。可选择该房间加入，或换一个名字。");
-        if (!create && !exists) throw new Problem(404,"房间已关闭，请刷新列表。");
+        bool create = route == "/api/create" || (route == "/api/enter" && !exists);
+        if (create && exists) throw new Problem(409,"对局名已被使用，请换一个名字。");
+        if (!create && !exists) throw new Problem(404,"这场对局已经关闭。");
         if (create) {
             string map = data.ContainsKey("map") ? Field(data, "map") : "dock";
             if (map != "dock" && map != "rail" && map != "warehouse")
                 throw new Problem(400,"请选择有效的地图。");
             r = new Room { Name = display, Map = map };
         }
-        if (r.Members.Count >= Capacity) throw new Problem(409,"房间已满，最多 8 名玩家。");
+        if (r.Members.Count >= Capacity) throw new Problem(409,"这场对局已有 8 名玩家。可等待空位，或另开一局。");
         var p = new Peer {Name=name, Id=NewId(8), Token=NewId(24), Room=r, LastSeen=Uptime.ElapsedMilliseconds};
         if (create) { r.Host=p; Rooms.Add(display,r); }
         Tokens.Add(p.Token,p);
@@ -127,7 +127,7 @@ public static class GreyportLobby
     }
     static object Action(string route, Dictionary<string,object> data) {
         lock(Gate) {
-            if (route == "/api/create" || route == "/api/join") return Join(route,data);
+            if (route == "/api/create" || route == "/api/join" || route == "/api/enter") return Join(route,data);
             if (route != "/api/leave" && route != "/api/send") throw new Problem(404,"接口不存在。");
             var p=Identify(Field(data,"token"));
             if (route == "/api/leave") { Remove(p); return new {ok=true}; }
@@ -167,9 +167,9 @@ public static class GreyportLobby
             case 413:return "Content Too Large"; default:return "Server Error";
         }
     }
-    static void Reply(Stream output,int code,string mime,byte[] bytes) {
+    static void Reply(Stream output,int code,string mime,byte[] bytes,string extraHeaders = "") {
         Bytes(output,"HTTP/1.1 "+code+" "+Status(code)+"\r\nContent-Type: "+mime+"\r\nContent-Length: "+bytes.Length+
-            "\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\nReferrer-Policy: no-referrer\r\nConnection: close\r\n\r\n");
+            "\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\nReferrer-Policy: no-referrer\r\n"+extraHeaders+"Connection: close\r\n\r\n");
         output.Write(bytes,0,bytes.Length);
     }
     static void JsonReply(Stream stream,int code,object payload) { Reply(stream,code,"application/json; charset=utf-8",Utf8.GetBytes(Json.Serialize(payload))); }
@@ -229,6 +229,16 @@ public static class GreyportLobby
                 string target=start[1], verb=start[0];
                 int q=target.IndexOf('?');
                 string path=q<0 ? target : target.Substring(0,q);
+                if(path=="/api/identity" && (verb=="GET" || verb=="OPTIONS")){
+                    var peerEndpoint=(IPEndPoint)client.Client.RemoteEndPoint;
+                    string identityOrigin;
+                    bool fileProbe=headers.TryGetValue("Origin",out identityOrigin) && identityOrigin=="null" &&
+                        IPAddress.IsLoopback(peerEndpoint.Address);
+                    string cors=fileProbe ? "Access-Control-Allow-Origin: null\r\nAccess-Control-Allow-Methods: GET\r\nAccess-Control-Allow-Private-Network: true\r\nVary: Origin\r\n" : "";
+                    if(verb=="OPTIONS" && !fileProbe)throw new Problem(403,"不允许跨站访问。");
+                    byte[] identity=verb=="GET"?Utf8.GetBytes("{\"game\":\"greyport-arena\",\"directPlay\":1}"):new byte[0];
+                    Reply(stream,200,"application/json; charset=utf-8",identity,cors);return;
+                }
                 if(verb=="GET"){
                     if(path=="/api/rooms") {
                         object rooms;
@@ -300,26 +310,26 @@ public static class GreyportLobby
         readonly Thread loop;
         volatile bool closed;
 
-        internal Listener(byte[] page, IPAddress bind, int port, bool explicitPort, bool browse) {
+        internal Listener(byte[] page, IPAddress bind, int port, bool explicitPort, bool browse, string playPath="/") {
             if(port<1 || port>65535)throw new ArgumentException("端口无效。");
             string[] addresses=bind.Equals(IPAddress.Any)?Addresses().ToArray():new[]{bind.ToString()};
             if(addresses.Length==0)addresses=new[]{"127.0.0.1"};
             int max=explicitPort?port:Math.Min(port+15,65535);
             for(;port<=max;port++){
-                try { server=new TcpListener(bind,port);server.Start(64);break; }
+                try { server=new TcpListener(bind,port);server.ExclusiveAddressUse=true;server.Start(64);break; }
                 catch(SocketException){ if(port==max)throw; }
             }
             GamePage=page;
             LobbyUrl="http://"+addresses[0]+":"+port;
-            Console.WriteLine("灰港战线 · 局域网大厅\n");
-            foreach(string address in addresses)Console.WriteLine("大厅地址  http://"+address+":"+port+"/");
-            Console.WriteLine("\n所有玩家打开同一个大厅地址，即可创建房间或从列表加入。\n保持本窗口开启。");
+            Console.WriteLine("灰港战线 · 局域网对局\n");
+            foreach(string address in addresses)Console.WriteLine("对局地址  http://"+address+":"+port+playPath);
+            Console.WriteLine("\n所有玩家打开同一个地址即可进场。\n保持本窗口开启。");
             ThreadPool.SetMinThreads(64,16);
             timer=new Timer(delegate{
                 lock(Gate) foreach(var p in Tokens.Values.Where(p=>Uptime.ElapsedMilliseconds-p.LastSeen>24000).ToArray())Remove(p);
             },null,4000,4000);
             loop=new Thread(Accept){IsBackground=true};loop.Start();
-            if(browse)try{Process.Start(new ProcessStartInfo(bind.Equals(IPAddress.Any)?"http://127.0.0.1:"+port+"/":LobbyUrl+"/"){UseShellExecute=true});}catch(Exception){}
+            if(browse)OpenBrowser((bind.Equals(IPAddress.Any)?"http://127.0.0.1:"+port:LobbyUrl)+playPath);
         }
         void Accept() {
             while(!closed){
@@ -339,9 +349,46 @@ public static class GreyportLobby
     }
     // The HTML supplies its own UTF-8 page to the in-box Windows PowerShell host.
     public static IDisposable OpenPage(string html, string address, int port, bool browse) {
+        return OpenMatch(html,address,port,browse,"");
+    }
+    static void OpenBrowser(string url) {
+        try {Process.Start(new ProcessStartInfo(url){UseShellExecute=true});}catch(Exception){}
+    }
+    static bool ExistingService(int port) {
+        try {
+            var request=(HttpWebRequest)WebRequest.Create("http://127.0.0.1:"+port+"/api/identity");
+            request.Proxy=null;request.Timeout=700;request.ReadWriteTimeout=700;request.AllowAutoRedirect=false;
+            using(var response=(HttpWebResponse)request.GetResponse())
+            using(var reader=new StreamReader(response.GetResponseStream(),Utf8)){
+                if(response.ContentLength<1 || response.ContentLength>256)return false;
+                var data=Json.DeserializeObject(reader.ReadToEnd()) as Dictionary<string,object>;
+                object version;
+                return data!=null && Field(data,"game")=="greyport-arena" &&
+                    data.TryGetValue("directPlay",out version) && Object.Equals(version,1);
+            }
+        }catch(WebException){return false;}catch(IOException){return false;}catch(ArgumentException){return false;}
+        catch(InvalidOperationException){return false;}
+    }
+    public static IDisposable OpenMatch(string html, string address, int port, bool browse, string playQuery) {
         if(String.IsNullOrEmpty(html) || !html.StartsWith("<!DOCTYPE html>",StringComparison.OrdinalIgnoreCase))
             throw new InvalidDataException("请选择完整的游戏 HTML 文件。");
-        return new Listener(Utf8.GetBytes(html),IPAddress.Parse(address),port,false,browse);
+        var query=System.Web.HttpUtility.ParseQueryString(playQuery ?? "");
+        string room=query["room"]??"灰港",map=query["map"]??"dock";
+        if(map!="dock" && map!="rail" && map!="warehouse")map="dock";
+        string path="/?room="+Uri.EscapeDataString(room)+"&map="+map;
+        if(browse && ExistingService(port)){
+            OpenBrowser("http://127.0.0.1:"+port+path);
+            Console.WriteLine("已连接本机正在运行的对局服务。");return null;
+        }
+        try{return new Listener(Utf8.GetBytes(html),IPAddress.Parse(address),port,true,browse,path);}
+        catch(SocketException ex) {
+            if(ex.SocketErrorCode!=SocketError.AddressAlreadyInUse && ex.SocketErrorCode!=SocketError.AccessDenied)throw;
+            if(ExistingService(port)){
+                if(browse)OpenBrowser("http://127.0.0.1:"+port+path);
+                Console.WriteLine("已连接本机正在运行的对局服务。");return null;
+            }
+            throw new InvalidOperationException("端口 "+port+" 已被其他程序使用。请先关闭占用端口的程序。",ex);
+        }
     }
     static int Main(string[] args) {
         Console.OutputEncoding=Utf8;

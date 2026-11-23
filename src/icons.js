@@ -17,5 +17,3 @@ const icons={
 };
 const icon=k=>'<svg class="ic" aria-hidden="true" viewBox="0 0 24 24">'+icons[k]+'</svg>';
 document.querySelectorAll('[data-i]').forEach(n=>n.innerHTML=icon(n.dataset.i));
-const networkDrawing='<svg viewBox="0 0 160 160" fill="none" stroke="#b9c9af"><path d="m40 54 46-29 48 29v55l-48 29-46-29z M40 54l46 28 48-28M86 82v56" stroke-dasharray="3 4"/><path d="m35 44 16-9 16 9v19l-16 9-16-9zm0 0 16 9 16-9m-16 9v19m51-32 15-9 16 9v18l-16 9-15-9zm0 0 15 9 16-9m-16 9v18M63 100l18-11 19 11v22l-19 11-18-11zm0 0 18 11 19-11m-19 11v22"/><path d="m68 54 32-4m-48 23v12l11 8m35 4 19-12V69" stroke-width="2"/><circle cx="51" cy="84" r="2"/><circle cx="118" cy="85" r="2"/></svg>';
-document.querySelector('.networkart').innerHTML=networkDrawing;

@@ -18,6 +18,7 @@ for (const [, url] of html.matchAll(/\burl\(([^)]+)\)/g)) {
   assert(url.startsWith('data:'), 'external CSS dependency found');
 }
 assert(!/<(?:img|audio|video|source|link|iframe)\b[^>]*?(?:src|href)\s*=\s*["'](?!data:)/i.test(html));
-assert((html.match(/data:image\/webp;base64,/g) || []).length >= 3);
+assert((html.match(/data:image\/webp;base64,/g) || []).length >= 2, 'expected inline sky and face textures');
+assert(html.includes('data-screen="connecting"') && html.includes('enterRoom') && !html.includes('id="lobby"'));
 assert(html.includes('data:font/ttf;base64,'));
 console.log('Verified five inline JavaScript modules, embedded art and font, and the embedded LAN host.');

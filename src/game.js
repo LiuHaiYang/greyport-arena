@@ -17,6 +17,7 @@
   let fireHeld = false, aimHeld = false, jumpPressed = false;
   let muzzle = 0, hurt = 0, hit = 0, killConfirm = 0, aim = 0, bob = 0, walking = false, running = false;
   let clientReady = false, clientShot = 0, handoff = false, drag = null, audio, noise, muted = false;
+  let controlsEngaged = false;
   let shotSerial = 0, switchedAt = -9, stride = 0, markSeed = 0, marks = [];
   const ui = (method, ...args) => window.UI?.[method]?.(...args);
   const map = () => window.Arena.map;
@@ -580,7 +581,7 @@
       fireMode:self.modes[self.weapon],canToggleFireMode:self.weapon!==2,reloadEmpty:self.reloadEmpty,
       reloadStage:reload<0?'':reload<.47?'取匣':reload<.86?'装匣':'就绪',
       bob,moving:walking,sprinting:running,reload,shotSerial,switchProgress:clamp(1-(time-switchedAt)/.22,0,1),
-      actors,fx:effects.concat(marks),name:self.name,mode:round.mode,map:round.map,phase,
+      actors,fx:effects.concat(marks),name:self.name,mode:round.mode,map:round.map,phase,controlsEngaged,
       leaderboard:[...players.values()].map(p=>({id:p.id,name:p.name,kills:p.kills,deaths:p.deaths,isMe:p===self}))
         .sort((a,b)=>b.kills-a.kills || a.deaths-b.deaths || a.name.localeCompare(b.name))};
   }
@@ -640,18 +641,19 @@
     if (!round || round.ended) return;
     clearInput(); lastDraw=now();
     screen(self.hp>0 ? 'playing' : 'dead');
+    controlsEngaged=true;
     wakeAudio(); requestMouse();
   }
   function pause() {
     if (!round || !['playing','dead'].includes(phase)) return;
-    clearInput(); screen('paused'); releaseMouse(); ui('hud',viewState());
+    clearInput(); controlsEngaged=false; screen('paused'); releaseMouse(); ui('hud',viewState());
   }
   function reset() {
     if (frame) cancelAnimationFrame(frame);
     if (ticker) clearInterval(ticker);
     for (const off of listeners) if (typeof off==='function') off();
     listeners=[]; players=new Map(); effects=[]; marks=[]; markSeed=stride=0; round=null; self=null;
-    frame=ticker=0; clearInput(); clientShot=shotSerial=0; switchedAt=-9;
+    frame=ticker=0; clearInput(); controlsEngaged=handoff=false; clientShot=shotSerial=0; switchedAt=-9;
     muzzle=hurt=hit=killConfirm=aim=bob=0;
   }
   function quit() {
@@ -682,8 +684,7 @@
     wireNetwork();
     if (mode==='join') hello();
     const startPaused = mode === 'host' && options.startPaused === true;
-    screen(startPaused ? 'paused' : 'playing'); wakeAudio();
-    if (!startPaused) requestMouse();
+    screen(startPaused ? 'paused' : 'playing');
     ticker=setInterval(tick,1000/40); render();
     return true;
   }
@@ -719,12 +720,16 @@
     return target?.closest?.('button,input,select,a,textarea,[role=button]');
   }
   document.addEventListener('mousedown',e=>{
-    if (phase!=='playing' || !self || !clientReady || interactive(e.target)) return;
+    if (phase!=='playing' || !self || !clientReady || interactive(e.target) || document.querySelector('dialog[open]')) return;
+    if (e.button!==0 && e.button!==2) return;
     wakeAudio();
     if (!document.pointerLockElement) {
       requestMouse();
       drag={x:e.clientX,y:e.clientY};
     }
+    // The first click in an automatically opened match activates mouse look.
+    // A restricted browser can still use click-and-drag if pointer lock was denied.
+    if (!controlsEngaged) { controlsEngaged=true; ui('hud',viewState()); return; }
     if (e.button===0) { fireHeld=true; setTrigger(self,true); }
     if (e.button===2) { aimHeld=true; e.preventDefault(); }
   });
@@ -739,7 +744,7 @@
     else if (drag) { look(e.clientX-drag.x,e.clientY-drag.y); drag={x:e.clientX,y:e.clientY}; }
   });
   document.addEventListener('wheel',e=>{
-    if (phase!=='playing' || !self || !e.deltaY) return;
+    if (phase!=='playing' || !self || !e.deltaY || document.querySelector('dialog[open]')) return;
     e.preventDefault(); changeWeapon(self,(self.weapon+(e.deltaY>0 ? 1 : 2))%3);
   },{passive:false});
   document.addEventListener('contextmenu',e=>{ if (phase==='playing') e.preventDefault(); });
@@ -749,10 +754,12 @@
     handoff=locked;
     if (locked && (!round || phase === 'paused' || phase === 'ended')) releaseMouse();
   });
-  window.addEventListener('blur',()=>{ if (phase==='playing' || phase==='dead') pause(); });
-  document.addEventListener('visibilitychange',()=>{
-    if (document.hidden && (phase==='playing' || phase==='dead')) pause();
-  });
+  function loseFocus() {
+    if (phase!=='playing' && phase!=='dead') return;
+    if (controlsEngaged) pause(); else clearInput();
+  }
+  window.addEventListener('blur',loseFocus);
+  document.addEventListener('visibilitychange',()=>{ if (document.hidden) loseFocus(); });
   window.Game={start,preview,resume,pause,quit,respawnSeconds,
     selectWeapon(i){ if (self && phase==='playing') changeWeapon(self,i); },
     toggleSound(){ muted=!muted; if (!muted) wakeAudio(); return !muted; },
