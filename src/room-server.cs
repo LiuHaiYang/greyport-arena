@@ -42,17 +42,13 @@ public static class GreyportLobby
         internal Peer Host;
         internal readonly List<Peer> Members = new List<Peer>();
     }
-    sealed class Frame {
-        internal long Serial;
-        internal string Text;
-    }
     sealed class Peer {
         internal string Id, Token, Name;
         internal Room Room;
         internal int Batch, Connection;
         internal long LastSeen, Serial;
         internal bool Removed;
-        internal readonly Queue<Frame> Frames = new Queue<Frame>();
+        internal readonly string[] Frames = new string[512];
     }
     static string NewId(int size) {
         var bytes = new byte[size];
@@ -74,8 +70,8 @@ public static class GreyportLobby
         return room.Members.Select(p => new { id = p.Id, name = p.Name }).ToArray();
     }
     static void Publish(Peer p, string json) {
-        p.Frames.Enqueue(new Frame { Serial = ++p.Serial, Text = json });
-        if (p.Frames.Count > 512) p.Frames.Dequeue();
+        p.Frames[p.Serial % p.Frames.Length] = json;
+        p.Serial++;
     }
     static void Changed(Room r) {
         string frame = Json.Serialize(new { type = "peers", peers = Roster(r) });
@@ -205,11 +201,12 @@ public static class GreyportLobby
                 while(!p.Removed && p.Serial<=after && p.Connection==connection && Uptime.ElapsedMilliseconds<due)
                     Monitor.Wait(Gate,(int)Math.Max(1,due-Uptime.ElapsedMilliseconds));
                 if (p.Connection!=connection) return;
-                bool missed=p.Frames.Count>0 && after < p.Frames.Peek().Serial-1;
+                bool missed=p.Serial-after > p.Frames.Length;
                 closed=p.Removed || missed;
                 if (missed) result.Append("data: {\"type\":\"closed\",\"message\":\"连接中断时间过长，请重新加入。\"}\n\n");
-                else foreach (var f in p.Frames) if (f.Serial>after) {
-                    result.Append("id: ").Append(f.Serial).Append("\ndata: ").Append(f.Text).Append("\n\n"); after=f.Serial;
+                else while (after<p.Serial) {
+                    string message=p.Frames[after % p.Frames.Length];
+                    result.Append("id: ").Append(++after).Append("\ndata: ").Append(message).Append("\n\n");
                 }
             }
             Bytes(stream,result.Length==0 ? ": heartbeat\n\n" : result.ToString());

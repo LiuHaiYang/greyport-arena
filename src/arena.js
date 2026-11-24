@@ -119,7 +119,7 @@ window.Arena = (() => {
     quad([l,t,f],[r,t,f],[r,t,k],[l,t,k],[0,1,0],col,m);
     quad([l,b,k],[r,b,k],[r,b,f],[l,b,f],[0,-1,0],col,m);
   }
-  const add=(a,b)=>a.map((v,i)=>v+b[i]), sub=(a,b)=>a.map((v,i)=>v-b[i]),mul=(a,v)=>a.map(q=>q*v);
+  const add=(a,b)=>[a[0]+b[0],a[1]+b[1],a[2]+b[2]], sub=(a,b)=>[a[0]-b[0],a[1]-b[1],a[2]-b[2]],mul=(a,v)=>[a[0]*v,a[1]*v,a[2]*v];
   const cross=(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];
   const norm=a=>mul(a,1/(Math.hypot(...a)||1));
   function bar(a,b,r,col,sides=4){
@@ -135,7 +135,6 @@ window.Arena = (() => {
     quad([x-dx*sg,y-h/2,z-dz],[x+dx*sg,y-h/2,z+dz],[x+dx*sg,y+h/2,z+dz],[x-dx*sg,y+h/2,z-dz],
     face==='s'?[0,0,1]:face==='n'?[0,0,-1]:face==='e'?[1,0,0]:[-1,0,0],white,10,[[u+g,v+.25-g],[u+.25-g,v+.25-g],[u+.25-g,v+g],[u+g,v+g]]);
   };
-  const beam=(x,y,z,w,h,d,col)=>box(x,y,z,w,h,d,col);
   function cargo(x,z,w,d,h,color){
     box(x,h/2,z,w,h,d,color,2);
     for(const y of [.10,h-.10]){
@@ -608,19 +607,24 @@ window.Arena = (() => {
   }
   function makeOcclusion(){
     // Static contact shadow and dirt mask, sampled by the arena pavement.
-    const N=256,bytes=new Uint8Array(N*N*4);
-    for(let j=0;j<N;j++)for(let i=0;i<N;i++){
-      const x=(i+.5)/N*50-25,z=(j+.5)/N*42-21;
-      let ao=1;
-      for(const b of map.walls){
+    const N=256,bytes=new Uint8Array(N*N).fill(255);
+    for(const b of map.walls){
+      const amplitude=Math.min(.39,.19+b.h*.055),falloff=1.46+.4/b.h;
+      // Beyond this distance the shadow rounds to white in an 8-bit texture.
+      const reach=Math.log(510*amplitude)/falloff;
+      const left=Math.max(0,Math.floor((25+b.x-b.w/2-reach)*N/50));
+      const right=Math.min(N,Math.ceil((25+b.x+b.w/2+reach)*N/50));
+      const top=Math.max(0,Math.floor((21+b.z-b.d/2-reach)*N/42));
+      const bottom=Math.min(N,Math.ceil((21+b.z+b.d/2+reach)*N/42));
+      for(let j=top;j<bottom;j++)for(let i=left;i<right;i++){
+        const x=(i+.5)/N*50-25,z=(j+.5)/N*42-21;
         const dx=Math.max(0,Math.abs(x-b.x)-b.w*.5),dz=Math.max(0,Math.abs(z-b.z)-b.d*.5);
-        const d=Math.sqrt(dx*dx+dz*dz),amp=Math.min(.39,.19+b.h*.055);
-        ao=Math.min(ao,1-amp*Math.exp(-d*(1.46+.4/b.h)));
+        const shade=Math.round(255*(1-amplitude*Math.exp(-Math.sqrt(dx*dx+dz*dz)*falloff)));
+        const k=j*N+i;bytes[k]=Math.min(bytes[k],shade);
       }
-      const k=4*(j*N+i);bytes[k]=bytes[k+1]=bytes[k+2]=Math.round(ao*255);bytes[k+3]=255;
     }
     const t=occlusionMap||gl.createTexture();gl.activeTexture(gl.TEXTURE3);gl.bindTexture(gl.TEXTURE_2D,t);
-    gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,N,N,0,gl.RGBA,gl.UNSIGNED_BYTE,bytes);
+    gl.texImage2D(gl.TEXTURE_2D,0,gl.LUMINANCE,N,N,0,gl.LUMINANCE,gl.UNSIGNED_BYTE,bytes);
     gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);return t;
   }
@@ -1401,8 +1405,6 @@ function buildOperatorGun(b,look,index) {
     const gripOffset = [0,-.012,-.035];
     const support = [[0,.04,-.26],[-.035,-.01,-.045]];
     const dot3 = (a,b) => a[0]*b[0] + a[1]*b[1] + a[2]*b[2];
-    const sub3 = (a,b) => [a[0]-b[0],a[1]-b[1],a[2]-b[2]];
-    const add3 = (a,b) => [a[0]+b[0],a[1]+b[1],a[2]+b[2]];
     const length3 = v => Math.hypot(v[0],v[1],v[2]);
     const mix3 = (a,b,w) => [a[0]+(b[0]-a[0])*w,a[1]+(b[1]-a[1])*w,a[2]+(b[2]-a[2])*w];
     const clamp = (v,lo,hi) => Math.max(lo,Math.min(hi,v));
@@ -1437,7 +1439,7 @@ function buildOperatorGun(b,look,index) {
               out[k+8]*x+out[k+9]*y+out[k+10]*z+out[k+11]];
     }
     function segment(a,b) {
-      const delta=sub3(b,a), length=length3(delta);
+      const delta=sub(b,a), length=length3(delta);
       return {bind:a, axis:delta.map(v=>v/length), length};
     }
     const sides=[-1,1].map((s,i)=>{
@@ -1449,7 +1451,7 @@ function buildOperatorGun(b,look,index) {
     });
     // Rotate a bind-pose segment to its posed endpoints. Axial extension only occurs at full reach.
     function aimSegment(out,id,seg,from,to) {
-      const ab=sub3(to,from), len=Math.max(.00001,length3(ab)), u=seg.axis;
+      const ab=sub(to,from), len=Math.max(.00001,length3(ab)), u=seg.axis;
       const a=ab[0]/len,b=ab[1]/len,c=ab[2]/len;
       const x=u[1]*c-u[2]*b, y=u[2]*a-u[0]*c, z=u[0]*b-u[1]*a;
       const cos=u[0]*a+u[1]*b+u[2]*c, k=1/Math.max(.00001,1+cos);
@@ -1466,7 +1468,7 @@ function buildOperatorGun(b,look,index) {
     }
     // Elbows and knees are solved as two linked segments in the plane defined by the pole.
     function limb(out,id,upper,lower,base,end,pole) {
-      const delta=sub3(end,base), distance=Math.max(.00001,length3(delta));
+      const delta=sub(end,base), distance=Math.max(.00001,length3(delta));
       const dir=delta.map(v=>v/distance), along=dot3(pole,dir);
       const bend=[pole[0]-dir[0]*along,pole[1]-dir[1]*along,pole[2]-dir[2]*along];
       const reach=Math.min(upper.length+lower.length-.00001,distance);
@@ -1556,29 +1558,29 @@ function buildOperatorGun(b,look,index) {
       const gunRot=knife?angles(gunPitch,-.13+.56*wind-.75*sweep,.27-.35*wind+(highSwing?.67:1.2)*sweep+.32*equip):
         angles(gunPitch,.025+lower*.40+run*(pistol?-.06:.24),-.045-lower*.65-equip*(pistol?.31:.22));
       const shoulder=point(out,1,sides[1].shoulder);
-      const grip=knife?add3(shoulder,[.038+.09*wind-.41*sweep,-.19+.13*lift+(highSwing?.065:-.055)*sweep,-.21+.10*wind-.14*lift]):
-        add3(shoulder,rotate(angles(aim*.83,0,0),
+      const grip=knife?add(shoulder,[.038+.09*wind-.41*sweep,-.19+.13*lift+(highSwing?.065:-.055)*sweep,-.21+.10*wind-.14*lift]):
+        add(shoulder,rotate(angles(aim*.83,0,0),
         [pistol?-.158:-.115, -.088+.006*breath-.020*stride-lower*.095,
          (pistol?-.29:-.193)+kick*(pistol?.051:.071)+lower*.027]));
       grip[1]-=equip*(knife?.13:pistol?.19:.11)+.019*landing;
       grip[2]+=equip*.067+travel*walk*(knife?.086:pistol?.029:.014);
       place(out,15,gunRot,origin,grip);
       const supportPalm=knife?point(out,1,[-.27-.043*sweep,1.23+.05*wind,-.24+.07*sweep]):
-        add3(grip,rotate(gunRot,support[weapon]));
+        add(grip,rotate(gunRot,support[weapon]));
       const pocketReach=ease(.23,.44,reload)*(1-ease(.48,.71,reload));
       const magTouch=ease(.075,.235,reload)*(1-ease(.73,.90,reload));
       const offset=motion.magShift;
       offset[0]=-.067*pocketReach;offset[1]=-.196*pocketReach+.009*seat;offset[2]=.085*pocketReach;
-      const magPalm=add3(grip,rotate(gunRot,[offset[0]-.027,offset[1]-.065,offset[2]+(pistol?.024:-.080)]));
-      const leftPalm=mix3(supportPalm,magPalm,magTouch);
+      const leftPalm=magTouch ? mix3(supportPalm,add(grip,rotate(gunRot,
+        [offset[0]-.027,offset[1]-.065,offset[2]+(pistol?.024:-.080)])),magTouch) : supportPalm;
       for(const arm of sides) {
         const left=arm.s<0;
         const handRot=left
           ? knife?angles(-.30,.19,-.21):angles(gunPitch-.08-pocketReach*.64,.08+lower*.27,-.18-lower*.27)
           : gunRot;
-        const rest=point(out,1,[arm.s*(left?.36:.29),left?1.03:.98,left?-.06:.10]);
-        const palm=release?mix3(left?leftPalm:grip,rest,release):left?leftPalm:grip;
-        const wrist=sub3(palm,rotate(handRot,gripOffset));
+        let palm=left?leftPalm:grip;
+        if(release)palm=mix3(palm,point(out,1,[arm.s*(left?.36:.29),left?1.03:.98,left?-.06:.10]),release);
+        const wrist=sub(palm,rotate(handRot,gripOffset));
         const root=point(out,1,arm.shoulder);
         limb(out,arm.arm,arm.upper,arm.lower,root,wrist,[arm.s*(left?.70:.94),-1,.23]);
         place(out,arm.arm+2,handRot,arm.wrist,wrist);
@@ -1858,11 +1860,11 @@ function buildOperatorGun(b,look,index) {
     m.height=a.y||0;
   }
   function sampleMotion(a,t){
-    const id=a.id,hash=actorIdentity(id);
+    const id=a.id;
     let m=operatorMotion.get(id);
     const displacement=m?Math.hypot(a.x-m.x,a.z-m.z):0;
     if(!m || t+.25<m.t || displacement>3.5||a.spawnNo!==m.spawnNo){
-      const seed=(hash%8191)*.0176;
+      const hash=actorIdentity(id),seed=(hash%8191)*.0176;
       m={x:a.x,z:a.z,t,seed,phase:seed,stride:0,forward:0,side:0,kick:0,flashed:false,speed:0,
         shots:a.shotSerial,spawnNo:a.spawnNo,fallYaw:null,coverage:1,height:0,magShift:new Float32Array(3),
         style:Number.isInteger(a.look)&&operatorLooks[a.look]?a.look:hash%operatorLooks.length,bones:new Float32Array(16*12)};
@@ -1959,8 +1961,8 @@ function buildOperatorGun(b,look,index) {
     }
   }
   function drawEffects(s){
-    mesh=[];
-    for(const f of s.fx||[]){
+    if(!s.fx?.length)return;
+    for(const f of s.fx){
       if(f.life<=0||!Number.isFinite(f.x)||!Number.isFinite(f.y)||!Number.isFinite(f.z))continue;
       if(f.type==='mark'){
         const center=[f.x,f.y,f.z],normal=[f.nx,f.ny,f.nz];

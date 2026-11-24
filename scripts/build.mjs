@@ -12,11 +12,11 @@ async function inlineAsset(name, mime) {
 }
 
 const [page, style, font, sky, face, fontLicense, weapon, arena,
-  lan, game, icons, map, ui, hostSource, hostHelper] = await Promise.all([
+  lan, game, map, ui, hostSource, hostHelper] = await Promise.all([
   read('lobby.html'), read('style.css'),
-  inlineAsset('barlow-condensed.ttf', 'font/ttf'), inlineAsset('harbor-sky.webp', 'image/webp'),
+  inlineAsset('barlow-condensed.woff2', 'font/woff2'), inlineAsset('harbor-sky.webp', 'image/webp'),
   inlineAsset('operator-face.webp', 'image/webp'), read('assets/OFL.txt'),
-  read('weapon.js'), read('arena.js'), read('room-lan.js'), read('game.js'), read('icons.js'),
+  read('weapon.js'), read('arena.js'), read('room-lan.js'), read('game.js'),
   read('map.js'), read('pure-ui.js'), read('room-server.cs'), read('single-file-host.js')
 ]);
 
@@ -31,7 +31,7 @@ const sections = {
   ARENA: arena.replace('__GREYPORT_SKY_DATA__', () => sky).replace('__GREYPORT_FACE_DATA__', () => face),
   LAN: hostHelper.replace('__GREYPORT_HOST_TYPE__', hostType) + '\n' + lan,
   GAME: game,
-  UI: [icons, map, ui].join('\n')
+  UI: map + '\n' + ui
 };
 const html = page.replace(/\/\*__(\w+)__\*\//g, (_, key) => {
   if (!(key in sections)) throw new Error('Unknown template section: ' + key);
@@ -39,7 +39,7 @@ const html = page.replace(/\/\*__(\w+)__\*\//g, (_, key) => {
 }).replace('</head>', () => '<!-- Barlow Condensed font license\n' + fontLicense +
   '\n-->\n<script id="greyport-lobby" type="text/plain">' + lobby + '</script>\n</head>');
 
-if (/__POSTER__|__FONT__|__GREYPORT_\w+__|\/\*__\w+__\*\//.test(html)) {
+if (/__FONT__|__GREYPORT_\w+__|\/\*__\w+__\*\//.test(html)) {
   throw new Error('An asset or section is missing');
 }
 const result = Buffer.from(html, 'utf8');

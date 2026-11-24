@@ -117,6 +117,25 @@ try {
   const [joined, peer] = await action('enter', { room, name: 'Peer', map: 'dock' });
   assert.equal(joined, 200);
   assert.equal(peer.map, 'rail');
+  // Resume at both edges of the relay's retained event window.
+  for(let batch=0;batch<8;batch++){
+    const messages=Array.from({length:64},(_,i)=>({body:{t:'replay',n:batch*64+i}}));
+    assert.equal((await action('send',{token:host.token,seq:batch+1,messages}))[0],200);
+  }
+  const events=url+'/api/events?token='+peer.token;
+  const missed=await fetch(events,{headers:{'Last-Event-ID':'0'},signal:AbortSignal.timeout(5000)});
+  assert.match(await missed.text(),/"type":"closed"/);
+  const replay=await fetch(events,{headers:{'Last-Event-ID':'1'},signal:AbortSignal.timeout(5000)});
+  const reader=replay.body.pipeThrough(new TextDecoderStream()).getReader();
+  let wire='';
+  try{
+    while(!wire.includes('id: 513\n') || !wire.endsWith('\n\n')){
+      const {done,value}=await reader.read();if(done)break;
+      wire+=value;
+    }
+  }finally{await reader.cancel();}
+  const frames=Array.from(wire.matchAll(/id: (\d+)\ndata: (.+)/g),m=>[Number(m[1]),JSON.parse(m[2]).body.n]);
+  assert.deepEqual(frames,Array.from({length:512},(_,i)=>[i+2,i]));
   const list = async () => (await (await fetch(url + '/api/rooms')).json()).rooms;
   assert.equal((await list())[0].count, 2);
   // Eight simultaneous first arrivals create exactly one host and enter the same map.
@@ -153,7 +172,7 @@ try {
   child.stdin.end('\n');
   const [status] = await Promise.race([exit, delay(5000, [-1], {ref:false})]);
   assert.equal(status, 0);
-  console.log('Verified quick matching, named links, waiting-room priority, completed rounds, concurrent capacity, exact HTML, and shutdown.');
+  console.log('Verified quick matching, named links, waiting-room priority, completed rounds, concurrent capacity, SSE replay after wraparound, exact HTML, and shutdown.');
 } finally {
   if (child && child.exitCode === null) child.kill();
   await rm(file, { force: true });

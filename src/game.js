@@ -670,6 +670,7 @@
       fall:p.deathYaw,floor:p.deathFloor,ammo:p.mags,stock:p.stock,ack:p.ack||0};
   }
   function snapshot(to) {
+    if (!to && !round.ended && window.LAN.peers.length===1) return;
     send({t:'state',time:round.time,remaining:round.remaining,end:round.ended,actors:[...players.values()].map(pack)},to);
   }
   function applySnapshot(msg) {
@@ -866,16 +867,18 @@
     const alive=self.hp>0, secondsToSpawn=alive ? 0 : clamp(self.respawnAt-time,0,respawnSeconds);
     const deathAge=alive?-1:Math.max(0,respawnSeconds-secondsToSpawn);
     const fall=clamp(deathAge/.70,0,1),deathDrop=fall*fall*(3-2*fall)*.95;
-    const actors=[...players.values()].filter(p=>p!==self).map(p=>{
+    const actors=[];
+    for(const p of players.values()){
+      if(p===self)continue;
       const age=p.hp>0?-1:Math.max(0,time-p.respawnAt+respawnSeconds);
       const pose=p.hp>0?visiblePoseAt(p,displayTime):p;
-      return {id:p.id,name:p.name,x:pose.x,y:p.hp>0?pose.feet:actorFeet(p,age),z:pose.z,yaw:pose.yaw,pitch:pose.pitch,team:'enemy',alive:p.hp>0,
+      actors.push({id:p.id,name:p.name,x:pose.x,y:p.hp>0?pose.feet:actorFeet(p,age),z:pose.z,yaw:pose.yaw,pitch:pose.pitch,team:'enemy',alive:p.hp>0,
         ...motion(pose),switchProgress:clamp(1-(time-p.equippedAt)/.22,0,1),hurt:clamp(1-(time-p.hurtAt)/.28,0,1),
         flash:p.hp>0 && !guns[p.weapon].melee && p.flashUntil>time,hp:p.hp,weapon:p.weapon,spawnNo:p.spawnNo,fireMode:p.modes[p.weapon],
         swingProgress:swingProgress(p,time),swingSerial:p.swings,
         reload:reloadProgress(p,time),reloadEmpty:p.reloadEmpty,shotSerial:p.shotsFired,shotAge:Math.max(0,time-p.lastShotAt),
-        deathAge:age,deathYaw:p.deathYaw};
-    });
+        deathAge:age,deathYaw:p.deathYaw});
+    }
     const [yawKick,pitchKick]=cameraKick(self), fov=fieldOfView();
     return {x:self.x,z:self.z,y:actorFeet(self,deathAge)+eyes-crouchDrop*self.crouch-deathDrop+eyeBob(self),
       feet:self.feet,...motion(self),
@@ -891,9 +894,7 @@
       melee:!!g.melee,swingProgress:swingProgress(self,time),swingSerial:self.swings,
       reloadStage:reload<0?'':reload<.47?'取匣':reload<.86?'装匣':'就绪',
       bob,moving:walking,sprinting:running,reload,shotSerial,switchProgress:clamp(1-(time-self.equippedAt)/.22,0,1),
-      actors,fx:effects.concat(marks),name:self.name,mode:round.mode,map:round.map,phase,controlsEngaged,
-      leaderboard:[...players.values()].map(p=>({id:p.id,name:p.name,kills:p.kills,deaths:p.deaths,isMe:p===self}))
-        .sort((a,b)=>b.kills-a.kills || a.deaths-b.deaths || a.name.localeCompare(b.name))};
+      actors,fx:effects.concat(marks),name:self.name,mode:round.mode,map:round.map,phase,controlsEngaged};
   }
   function render() {
     if (!round) return;
@@ -902,9 +903,9 @@
     lastDraw=n;
     advanceLocalMovement(n);
     for (const fx of effects) fx.life-=dt;
-    effects=effects.filter(fx=>fx.life>0);
+    if(effects.length)effects=effects.filter(fx=>fx.life>0);
     for (const m of marks) m.life=Math.max(0,m.maxLife-(round.time-m.born));
-    marks=marks.filter(m=>m.life>0);
+    if(marks.length)marks=marks.filter(m=>m.life>0);
     advanceKick(self,round.time+Math.max(0,n-lastTick)); muzzle=Math.max(0,muzzle-dt);
     killConfirm=Math.max(0,killConfirm-dt);
     hurt=Math.max(0,hurt-dt); hit=Math.max(0,hit-dt);
@@ -995,15 +996,6 @@
     ticker=setInterval(tick,1000/40); render();
     return true;
   }
-  function preview() {
-    if (round) return;
-    try {
-      ensureRenderer();
-      const s=map().spawns[0];
-      window.Arena.draw({x:s.x,z:s.z,y:2.1,yaw:s.yaw??-.55,pitch:.05,time:0,aim:0,actors:[],fx:[]});
-    } catch { /* The menu can be displayed independently of WebGL. */ }
-  }
-
   document.addEventListener('keydown',e=>{
     if (!round || document.querySelector('dialog[open]') || e.target?.matches?.('input,textarea,[contenteditable=true]')) return;
     if (e.code==='Escape') {
@@ -1086,12 +1078,18 @@
   }
   window.addEventListener('blur',loseFocus);
   document.addEventListener('visibilitychange',()=>{ if (document.hidden) loseFocus(); });
-  window.Game={start,preview,resume,pause,quit,respawnSeconds,
+  window.Game={start,resume,pause,quit,respawnSeconds,
     selectWeapon(i){ if (self && clientReady && phase==='playing') changeWeapon(self,i); },
     toggleSound(){ muted=!muted; if (!muted) wakeAudio(); return !muted; },
     setSound(enabled){ muted=!enabled; if (enabled) wakeAudio(); },
     get soundEnabled(){ return !muted; },
-    get state(){ return round ? viewState() : null; },
+    get state(){
+      if(!round)return null;
+      const state=viewState();
+      state.leaderboard=[...players.values()].map(p=>({id:p.id,name:p.name,kills:p.kills,deaths:p.deaths,isMe:p===self}))
+        .sort((a,b)=>b.kills-a.kills || a.deaths-b.deaths || a.name.localeCompare(b.name));
+      return state;
+    },
     guns
   };
 })();

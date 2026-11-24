@@ -18,7 +18,11 @@ for (const [, url] of html.matchAll(/\burl\(([^)]+)\)/g)) {
   assert(url.startsWith('data:'), 'external CSS dependency found');
 }
 assert(!/<(?:img|audio|video|source|link|iframe)\b[^>]*?(?:src|href)\s*=\s*["'](?!data:)/i.test(html));
-assert((html.match(/data:image\/webp;base64,/g) || []).length >= 2, 'expected inline sky and face textures');
+const textures = html.match(/data:image\/webp;base64,[A-Za-z0-9+/=]+/g) || [];
+assert.equal(textures.length, 2, 'expected one sky and one face texture');
+assert(textures[0] !== textures[1], 'duplicate texture payload');
 assert(html.includes('data-screen="connecting"') && html.includes('enterRoom') && !html.includes('id="lobby"'));
-assert(html.includes('data:font/ttf;base64,'));
+const fonts = [...html.matchAll(/url\(data:font\/woff2;base64,([A-Za-z0-9+/=]+)\) format\('woff2'\)/g)];
+assert.equal(fonts.length, 1, 'expected one embedded WOFF2 font');
+assert.equal(Buffer.from(fonts[0][1], 'base64').toString('ascii', 0, 4), 'wOF2');
 console.log('Verified five inline JavaScript modules, embedded art and font, and the embedded LAN host.');

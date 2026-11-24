@@ -12,12 +12,12 @@
   const savedSlot=stored('loadout',stored('weapon','0')==='2'?'pistol':'rifle');
   let equipped=Math.max(0,slotIds.indexOf(savedSlot));
   let player=stored('name','')||('玩家'+String(Math.floor(Math.random()*9000)+1000));
-  let lastState=null,lastRadar=0,toastTimer=0,previewMap=Arena.maps[0],joining=false;
+  let lastState={},lastRadar=0,toastTimer=0,previewMap,joining=false;
   let target=LAN.route();
   const getMap=id=>Arena.maps.find(map=>map.id===id);
   function notify(message){text('toast',message);$('toast').classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('toast').classList.remove('show'),3300)}
-  function showModal(kind,en,title,html){
-    if(Game.state?.phase==='playing'||Game.state?.phase==='dead')Game.pause();
+  function showModal(en,title,html){
+    Game.pause();
     text('modalEn',en);text('modalTitle',title);body.innerHTML=html;
     if(!dlg.open)dlg.showModal();
   }
@@ -27,7 +27,7 @@
   if(stored('sound','on')==='off')Game.setSound(false);
   function help(){
     const keys=[['前进 / 后退','W / S'],['左右平移','A / D'],['疾跑','Shift + 移动'],['跳跃','空格'],['蹲下 / 起身','按住 / 松开 Ctrl 或 C'],['突击步枪','1'],['手枪','2'],['刀','3'],['上一把武器','Q'],['循环切换武器','鼠标滚轮'],['开火 / 挥刀','鼠标左键'],['举枪瞄准 / 开镜','按住右键'],['步枪倍镜 2× / 4× / 8×','V'],['步枪单发 / 连发','B'],['换弹','R'],['战斗菜单','Esc']];
-    showModal('help','FIELD MANUAL','操作指南','<div class="keylist">'+keys.map(([a,b])=>'<div>'+a+'<kbd>'+b+'</kbd></div>').join('')+'</div><p style="margin-top:16px">第一次点击画面后，移动鼠标转动视角。手枪每次点击打一发，持刀时每次点击挥一次。阵亡后 15 秒自动复活。</p>');
+    showModal('FIELD MANUAL','操作指南','<div class="keylist">'+keys.map(([a,b])=>'<div>'+a+'<kbd>'+b+'</kbd></div>').join('')+'</div><p style="margin-top:16px">第一次点击画面后，移动鼠标转动视角。手枪每次点击打一发，持刀时每次点击挥一次。阵亡后 15 秒自动复活。</p>');
   }
   function armory(selected){
     const g=guns[selected];
@@ -36,7 +36,7 @@
       ['射速上限',Math.round(60/(selected===0?g.delay:g.semiDelay))+' 发/分'],
       ['常规换弹',g.load.toFixed(2)+' 秒'],['空匣换弹',g.emptyLoad.toFixed(2)+' 秒']];
     if(selected===0)stats.push(['可变倍镜','2× / 4× / 8×']);
-    showModal('arm','LOADOUT','武器库','<div class="seg">'+guns.map((w,i)=>'<button data-gun="'+i+'" class="'+(i===selected?'chosen':'')+'">'+w.name+'</button>').join('')+'</div><canvas id="gunPreview"></canvas><div class="gunhead"><strong>'+g.name+'</strong><span>'+gunTypes[selected]+'</span></div><div class="gunstats">'+stats.map(([k,v])=>'<div>'+k+'<b>'+v+'</b></div>').join('')+'</div><div class="rowactions"><button class="bt primary" id="equip">'+(selected===equipped?'已选为出场武器':'设为出场武器')+'</button></div>');
+    showModal('LOADOUT','武器库','<div class="seg">'+guns.map((w,i)=>'<button data-gun="'+i+'" class="'+(i===selected?'chosen':'')+'">'+w.name+'</button>').join('')+'</div><canvas id="gunPreview"></canvas><div class="gunhead"><strong>'+g.name+'</strong><span>'+gunTypes[selected]+'</span></div><div class="gunstats">'+stats.map(([k,v])=>'<div>'+k+'<b>'+v+'</b></div>').join('')+'</div><div class="rowactions"><button class="bt primary" id="equip">'+(selected===equipped?'已选为出场武器':'设为出场武器')+'</button></div>');
     body.querySelectorAll('[data-gun]').forEach(b=>b.onclick=()=>armory(Number(b.dataset.gun)));
     $('equip').onclick=()=>{equipped=selected;store('loadout',slotIds[selected]);closeModal();notify('下次入场使用 '+g.name)};
     Weapon.preview($('gunPreview'),selected);
@@ -55,7 +55,7 @@
   }
   function maps(){
     previewMap=Arena.map;
-    showModal('map','MAP INTEL',previewMap.name,
+    showModal('MAP INTEL',previewMap.name,
       '<div class="seg mapnav" role="group" aria-label="浏览地图">'+Arena.maps.map(m=>'<button type="button" data-map="'+esc(m.id)+'">'+esc(m.name)+'</button>').join('')+'</div>'
       +'<canvas id="largePlot" class="largeplot" role="img"></canvas><p class="legend"><span>●</span> 出生点　▧ 障碍物</p><p class="mapdesc" id="mapDescription"></p>'
       +'<div class="briefstats"><span>场地尺寸<b id="mapSize"></b></span><span>对局时长<b>5 分钟</b></span><span>复活间隔<b>15 秒</b></span></div>');
@@ -64,7 +64,7 @@
       if(choice){previewMap=getMap(choice.dataset.map);refreshPreview()}
     };
     refreshPreview();
-  };
+  }
   function roomLabel(){
     if(!LAN.active)return '';
     return LAN.localOnly?LAN.room+' · 点击「分享对局」启用联机':LAN.room+' · '+LAN.peers.length+' / 8 人';
@@ -113,7 +113,6 @@
       }
       player=name;if(create)store('name',name);
       text('radarMap',Arena.map.name);refreshPresence();$('killfeed').replaceChildren();
-      $('entryStatus').hidden=true;
     }catch(e){
       const message=e.message||'连接失败，请重试。';
       if(create&&dlg.open&&$('matchError'))text('matchError',message);
@@ -125,7 +124,7 @@
     const current=LAN.active?LAN.room:target.room;
     const defaultRoom=('战区 '+Math.random().toString(36).slice(2,6).toUpperCase());
     const activeMap=LAN.map||target.map;
-    showModal('new','NEW MATCH','另开对局','<form id="newMatchForm">'
+    showModal('NEW MATCH','另开对局','<form id="newMatchForm">'
       +'<label class="field">玩家代号<input id="playername" maxlength="16" required value="'+esc(player)+'" autocomplete="nickname"></label>'
       +'<label class="field">对局名称<input id="newRoomName" maxlength="24" required value="'+esc(defaultRoom)+'" autocomplete="off"></label>'
       +'<label class="field">地图<select id="roomMap">'+Arena.maps.map(m=>'<option value="'+esc(m.id)+'"'+(m.id===activeMap?' selected':'')+'>'+esc(m.name)+'</option>').join('')+'</select></label>'
@@ -149,21 +148,21 @@
   function share(){
     const url=LAN.shareUrl;
     if(url){
-      showModal('share','LOCAL NETWORK','分享对局',
+      showModal('LOCAL NETWORK','分享对局',
         '<section class="sharing"><p>同一局域网的玩家打开这个地址，即可进入「'+esc(LAN.room)+'」。</p>'
         +'<label class="field">对局地址<input id="shareAddress" readonly></label><button type="button" class="bt primary" id="copyAddress">复制对局地址</button>'
         +'<p role="status" id="copyStatus"></p></section>');
       const field=$('shareAddress');field.value=url;
       $('copyAddress').onclick=()=>copyField(field,'对局地址已复制。');void copyField(field,'对局地址已复制。');
     }else if(LAN.localOnly){
-      showModal('share','LOCAL NETWORK','让好友加入',
+      showModal('LOCAL NETWORK','让好友加入',
         '<section class="sharing"><p>在这台 Windows 电脑的 PowerShell 中运行下方命令，浏览器会打开可联机的同名对局。好友用浏览器打开窗口显示的局域网地址即可加入。</p>'
         +'<div class="rowactions"><button type="button" class="bt primary" id="copyHostCommand">复制启动命令</button></div><details><summary>查看命令</summary>'
         +'<textarea id="hostCommand" readonly rows="4" aria-label="联机启动命令"></textarea></details><p role="status" id="copyStatus"></p></section>');
       const field=$('hostCommand');field.value=SingleFileHost.command(LAN.room||target.room,LAN.map||target.map);
       $('copyHostCommand').onclick=()=>copyField(field,'已复制。请粘贴到 Windows PowerShell 后按回车。');
     }else{
-      showModal('share','LOCAL NETWORK','分享对局',
+      showModal('LOCAL NETWORK','分享对局',
         '<p>当前服务未提供其他电脑可以访问的局域网地址。请在连接局域网的 Windows 主机上打开本地游戏文件，从「分享对局」启用联机。</p>');
     }
   }
@@ -210,56 +209,68 @@
   let scopeOpacity=0;
   function scope(s){
     const alpha=s && s.phase==='playing' && s.weapon===0 ? Math.round((s.scopeBlend||0)*1000)/1000 : 0;
-    if(alpha>0)text('lensPower',s.scopeZoom+'×');
     if(alpha===scopeOpacity)return;
     scopeOpacity=alpha;
     scopeLayer.hidden=alpha===0;
     scopeLayer.style.opacity=String(alpha);
     hipCross.style.visibility=alpha>.15?'hidden':'';
   }
-  let activeSlot=-1;
   function hud(s){
+    const previous=lastState;
     lastState=s;
-    $('fieldHint').hidden=Boolean(s.controlsEngaged);
-    const secs=Math.max(0,Math.ceil(s.secondsLeft));
-    text('timer',String(Math.floor(secs/60)).padStart(2,'0')+':'+String(secs%60).padStart(2,'0'));
-    vitals(s.hp,s.kills,s.deaths,s.targetFeedback);
-    if(activeSlot!==s.weapon){
-      activeSlot=s.weapon;
-      for(let i=0;i<slotLabels.length;i++)slotLabels[i].classList.toggle('equipped',i===activeSlot);
+    if(s.controlsEngaged!==previous.controlsEngaged)$('fieldHint').hidden=s.controlsEngaged;
+    if(s.secondsLeft!==previous.secondsLeft){
+      const secs=s.secondsLeft;
+      text('timer',String(Math.floor(secs/60)).padStart(2,'0')+':'+String(secs%60).padStart(2,'0'));
     }
-    text('weapLabel',guns[s.weapon].name);
-    $('opticSetting').hidden=s.weapon!==0 || s.scopeBlend>.8;
-    if(s.weapon===0)text('scopePower',s.scopeZoom+'×');
-    $('ammoLine').hidden=s.melee;$('knifeAction').hidden=!s.melee;$('fireSetting').hidden=s.melee;
-    if(!s.melee){text('ammo',s.ammo);text('reserve',s.reserve);}
-    const automatic=s.fireMode==='auto', reloading=s.reload>=0;
-    text('fireModeLabel',automatic?'连发':'单发');
-    $('fireSetting').classList.toggle('automatic',automatic);$('fireModeKey').hidden=!s.canToggleFireMode;
-    $('reloadMeter').hidden=!reloading;
+    if (s.targetFeedback!==shownTarget) vitals(s.hp,s.kills,s.deaths,s.targetFeedback);
+    if(s.weapon!==previous.weapon){
+      slotLabels.forEach((el,i)=>el.classList.toggle('equipped',i===s.weapon));
+      text('weapLabel',guns[s.weapon].name);
+      $('ammoLine').hidden=s.melee;$('knifeAction').hidden=!s.melee;$('fireSetting').hidden=s.melee;
+      $('fireModeKey').hidden=!s.canToggleFireMode;
+    }
+    if(s.weapon!==previous.weapon || (s.scopeBlend>.8)!==(previous.scopeBlend>.8))
+      $('opticSetting').hidden=s.weapon!==0 || s.scopeBlend>.8;
+    if(s.scopeZoom!==previous.scopeZoom){
+      text('scopePower',s.scopeZoom+'×');text('lensPower',s.scopeZoom+'×');
+    }
+    if(s.ammo!==previous.ammo)text('ammo',s.ammo);
+    if(s.reserve!==previous.reserve)text('reserve',s.reserve);
+    if(s.fireMode!==previous.fireMode){
+      const automatic=s.fireMode==='auto';
+      text('fireModeLabel',automatic?'连发':'单发');
+      $('fireSetting').classList.toggle('automatic',automatic);
+    }
+    const reloading=s.reload>=0;
+    if(reloading!==(previous.reload>=0))$('reloadMeter').hidden=!reloading;
     if(reloading){
       text('gunstatus','换弹 · '+s.reloadStage);
       $('reloadFill').style.transform='scaleX('+Math.min(1,s.reload)+')';
     }
-    const confirm=s.killConfirm||0,marker=$('marker'),cross=$('cross');
-    marker.classList.toggle('confirmed',confirm>0);
-    marker.style.opacity=confirm>0?String(Math.min(1,confirm*5)):String(Math.min(1,(s.hit||0)*14));
-    $('elimination').classList.toggle('visible',confirm>0);
-    const spread=4.5-3*s.aim+(s.moving?1.5:0)*(1-s.aim)+(s.recoil||0)*(10-5*s.aim);
-    cross.style.setProperty('--spread',Math.min(21,spread).toFixed(1)+'px');
-    cross.style.opacity=reloading?'.28':s.hp>0?'1':'0';
-    if(performance.now()-lastRadar>125){drawMap($('radar'),s,true);lastRadar=performance.now()}
-    if(document.body.dataset.screen==='dead'&&$('respawn')) text('respawn',Math.max(0,Math.ceil(s.respawnLeft)));
+    if(s.killConfirm!==previous.killConfirm || s.hit!==previous.hit){
+      const confirm=s.killConfirm,marker=$('marker');
+      marker.classList.toggle('confirmed',confirm>0);
+      marker.style.opacity=Math.min(1,confirm>0?confirm*5:s.hit*14);
+      $('elimination').classList.toggle('visible',confirm>0);
+    }
+    if(s.aim!==previous.aim || s.moving!==previous.moving || s.recoil!==previous.recoil){
+      const spread=4.5-3*s.aim+(s.moving?1.5:0)*(1-s.aim)+s.recoil*(10-5*s.aim);
+      hipCross.style.setProperty('--spread',Math.min(21,spread).toFixed(1)+'px');
+    }
+    if(s.hp!==previous.hp || reloading!==(previous.reload>=0)) hipCross.style.opacity=reloading?'.28':s.hp>0?'1':'0';
+    const now=performance.now();
+    if(now-lastRadar>125){drawMap($('radar'),s,true);lastRadar=now}
+    if(s.phase==='dead' && s.respawnLeft!==previous.respawnLeft)text('respawn',s.respawnLeft);
   }
   function screen(phase){
     document.body.dataset.screen=phase;
     if(phase!=='playing')scope(null);
     $('entryStatus').hidden=true;
-    if(phase==='menu'){lastState=null;closeModal();text('defeatedName','');$('elimination').classList.remove('visible');disconnected();return}
+    if(phase==='menu'){lastState={};closeModal();text('defeatedName','');$('elimination').classList.remove('visible');disconnected();return}
     if(phase==='playing'){$('matchOverlay').hidden=true;return}
-    const s=Game.state||lastState||{};
     if(phase==='paused'){
-      overlay('FIELD MENU','战斗菜单',Arena.map.name+' · '+roomLabel());
+      overlay('FIELD MENU','战斗菜单','');
       refreshPresence();
       action('返回战斗',()=>Game.resume(),true,'resumeMatch');action('分享对局',share,false,'menuShare');
       action('另开对局',newMatch,false,'newMatch');action('地图简报',maps,false,'mapBtn');action('武器库',()=>armory(equipped),false,'navArm');
@@ -269,10 +280,10 @@
       action('离开对局',()=>Game.quit(),false,'leaveMatch');
     }else if(phase==='dead'){
       overlay('RESPAWN','等待重返战区','');
-      $('matchMore').innerHTML='<strong id="respawn">'+Math.max(0,Math.ceil(s.respawnLeft??Game.respawnSeconds))+'</strong> 秒后复活';action('战斗菜单',()=>Game.pause());
+      $('matchMore').innerHTML='<strong id="respawn">'+Game.state.respawnLeft+'</strong> 秒后复活';action('战斗菜单',()=>Game.pause());
     }else if(phase==='ended'){
       closeModal();overlay('ROUND COMPLETE','对局结束',Arena.map.name+' · 自由混战');
-      $('matchMore').innerHTML='<table class="ranks"><thead><tr><th>排名</th><th>代号</th><th>击败</th><th>阵亡</th></tr></thead><tbody>'+(s.leaderboard||[]).map((a,i)=>'<tr><td>'+(i+1)+'</td><td>'+esc(a.name)+(a.isMe?'（你）':'')+'</td><td>'+a.kills+'</td><td>'+a.deaths+'</td></tr>').join('')+'</tbody></table>';
+      $('matchMore').innerHTML='<table class="ranks"><thead><tr><th>排名</th><th>代号</th><th>击败</th><th>阵亡</th></tr></thead><tbody>'+Game.state.leaderboard.map((a,i)=>'<tr><td>'+(i+1)+'</td><td>'+esc(a.name)+(a.isMe?'（你）':'')+'</td><td>'+a.kills+'</td><td>'+a.deaths+'</td></tr>').join('')+'</tbody></table>';
       action('另开对局',newMatch,true,'newMatch');action('离开对局',()=>Game.quit());
     }
   }

@@ -4,8 +4,7 @@
   const mat = {
     iron: '#424c52', plate: '#677174', light: '#87908f', black: '#333b40',
     dark: '#242d33', grip: '#374145', stripe: '#eca83c', bone: '#b9c3be',
-    blue: '#558d9c', glass: '#7acacf', suit: '#505b5b', cuff: '#343f43',
-    glove: '#323c42', knuckle: '#485357', brass: '#d0a259'
+    blue: '#558d9c', glass: '#7acacf'
   };
   const sub = (a,b) => [a[0]-b[0], a[1]-b[1], a[2]-b[2]];
   const dot = (a,b) => a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
@@ -191,7 +190,7 @@
       const s=left?-1:1, z=left?supportZ:g-.095;
       const wrist=[s*(left?.285:.234),left?-.524:-.53,z-.24];
       const elbow=[s*(left?1.02:.82),left?-1.53:-1.62,left?-.99:-1.2];
-      const shell='#3c4c58',glove='#323532',suede='#514f46',rubber='#282e2e',binding='#444a46';
+      const shell='#3c4c58',glove='#323532',suede='#514f46',binding='#444a46';
       function sweep(rings,base,sides=10){
         const points=[],radials=[],smooth=[];
         let across;
@@ -409,7 +408,7 @@
     const m=matrix(-1.23,.075,.055);
     const mid=(model.tip+model.rear)*.5;
     const len=model.tip-model.rear,depth=8,f=depth*Math.min(w*.84/len,h*.79/(i===1?1.08:1.36));
-    render(model,{...target,m,pos:[mid*.94,.215,depth],f,cx:w*.5,cy:h*.48,preview:true,reload:0});
+    render(model,{...target,m,pos:[mid*.94,.215,depth],f,cx:w*.5,cy:h*.48,preview:true});
   }
   const accelerators=new WeakMap();
   function accelerator(canvas){
@@ -480,8 +479,12 @@
     const atlas=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,atlas);
     gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,sheet);
     gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);
+    function upload(target,data){
+      const buffer=gl.createBuffer();
+      gl.bindBuffer(target,buffer);gl.bufferData(target,data,gl.STATIC_DRAW);return buffer;
+    }
     const buffers=models.map(o=>{
-      const data=[];
+      const data=[],indices=[];
       for(const face of o.faces){
         const axis=face.n.map(Math.abs);
         const dim=axis[0]>=axis[1]&&axis[0]>=axis[2]?[2,1]:axis[1]>=axis[2]?[2,0]:[0,1];
@@ -491,14 +494,17 @@
         const part={gun:0,mag:1,support:2,firing:3,action:4,sleeve:5}[face.group];
         const lab=labels.indexOf(face.label),len=face.label?Math.min(250,Math.ceil(type.measureText(face.label).width)+5):0;
         const label=[[0,0],[len/256,0],[len/256,40/256],[0,40/256]];
-        for(let i=1;i<face.vertices.length-1;i++)for(const j of [0,i,i+1]){
+        const start=data.length/14,base=face.base.map(v=>v/255);
+        for(let j=0;j<face.vertices.length;j++){
           const p=face.vertices[j],surf=uv[j].map((v,k)=>(v-lo[k])/(hi[k]-lo[k]||1));
-          data.push(...p,...(face.smooth?face.smooth[j]:face.n),...face.base.map(v=>v/255),...surf,
+          data.push(...p,...(face.smooth?face.smooth[j]:face.n),...base,...surf,
             lab<0?-1:label[j][0],lab<0?-1:lab*48/256+label[j][1],part);
+          if(j>=2)indices.push(start,start+j-1,start+j);
         }
       }
-      const buffer=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,buffer);
-      gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(data),gl.STATIC_DRAW);return {buffer,count:data.length/14};
+      if(data.length/14>65536)throw Error('Weapon mesh exceeds index budget');
+      return {vertices:upload(gl.ARRAY_BUFFER,new Float32Array(data)),
+        elements:upload(gl.ELEMENT_ARRAY_BUFFER,new Uint16Array(indices)),count:indices.length};
     });
     const attribs=['position','normal','color','surfaceUV','labelUV','part'].map(k=>gl.getAttribLocation(program,k));
     const uniforms=Object.fromEntries(['rotation','translation','scale','magOffset','handOffset','forearm','slide','key','exposure'].map(k=>[k,gl.getUniformLocation(program,k)]));
@@ -508,7 +514,8 @@
       if(layer.width!==w||layer.height!==h){layer.width=w;layer.height=h;}
       gl.viewport(0,0,w,h);clear();
       const entry=buffers[o.index];
-      gl.bindBuffer(gl.ARRAY_BUFFER,entry.buffer);
+      gl.bindBuffer(gl.ARRAY_BUFFER,entry.vertices);
+      gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,entry.elements);
       let off=0;
       [3,3,3,2,2,1].forEach((count,i)=>{
         gl.enableVertexAttribArray(attribs[i]);gl.vertexAttribPointer(attribs[i],count,gl.FLOAT,false,56,off*4);off+=count;
@@ -518,7 +525,7 @@
       gl.uniform3fv(uniforms.magOffset,pose.mag);gl.uniform3fv(uniforms.handOffset,pose.hand);
       if(pose.forearm){const a=pose.forearm;gl.uniformMatrix3fv(uniforms.forearm,false,[a[0],a[3],a[6],a[1],a[4],a[7],a[2],a[5],a[8]]);}
       gl.uniform1f(uniforms.slide,slide);gl.uniform3fv(uniforms.key,key);gl.uniform1f(uniforms.exposure,exposure);
-      gl.drawArrays(gl.TRIANGLES,0,entry.count);
+      gl.drawElements(gl.TRIANGLES,entry.count,gl.UNSIGNED_SHORT,0);
       return point=>{const p=rotate(point,m),z=p[2]+pos[2];return [w/2+f*(p[0]+pos[0])/z,h/2-f*(p[1]+pos[1])/z];};
     }
     const gpu={draw,clear,layer};accelerators.set(canvas,gpu);return gpu;

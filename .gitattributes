@@ -3,7 +3,6 @@
 # Packing preserves the original source bytes, including mixed line endings.
 /index.html -text
 /src/** -text
-*.ttf binary
+*.woff2 binary
 *.webp binary
 *.mp4 binary
-*.gif binary
