@@ -3,14 +3,15 @@
 
   const guns = [
     {name:'AR-24',cap:30,reserve:120,damage:27,delay:.105,semiDelay:.155,load:1.55,emptyLoad:1.92,spread:.009,kick:21},
-    {name:'VX-9',cap:36,reserve:144,damage:19,delay:.080,semiDelay:.135,load:1.32,emptyLoad:1.66,spread:.016,kick:16},
-    {name:'P-12',cap:12,reserve:60,damage:34,delay:.205,semiDelay:.205,load:1.04,emptyLoad:1.30,spread:.007,kick:24}
+    {name:'P-12',cap:12,reserve:60,damage:34,delay:.205,semiDelay:.205,load:1.04,emptyLoad:1.30,spread:.007,kick:24},
+    {name:'战术刀',melee:true,cap:0,reserve:0,damage:55,range:1.8,delay:.55,duration:.42,contact:.10}
   ];
   const respawnSeconds = 15;
   const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
   const now = () => performance.now() / 1000;
   const radius = .34, eyes = 1.54, duration = 300;
   const keys = new Set();
+  const wheelGesture={at:-1,direction:0,pixels:0,switched:false};
   let round = null, self = null, players = new Map(), effects = [], listeners = [];
   let phase = 'menu', canvas, overlay, ready = false, frame = 0, ticker = 0;
   let lastDraw = 0, lastTick = 0, lastHUD = 0, nextSync = 0, nextHello = 0;
@@ -39,6 +40,7 @@
   }
   function clearInput() {
     keys.clear();
+    wheelGesture.at=-1;
     if (self?.triggerHeld) setTrigger(self,false);
     if (self) self.pressUntil=-1;
     fireHeld = aimHeld = jumpPressed = false;
@@ -72,17 +74,17 @@
   function blast(weapon, volume) {
     if (muted || !audio || audio.state !== 'running') return;
     const src = audio.createBufferSource(), filter = audio.createBiquadFilter(), gain = audio.createGain();
-    const t = audio.currentTime, tail = [.13, .085, .105][weapon];
+    const t = audio.currentTime, tail = [.13, .105][weapon];
     src.buffer = noise;
     filter.type = 'lowpass';
-    filter.frequency.setValueAtTime([6200, 7700, 5200][weapon], t);
+    filter.frequency.setValueAtTime([6200, 5200][weapon], t);
     filter.frequency.exponentialRampToValueAtTime(440, t + tail);
     gain.gain.setValueAtTime(.24 * volume, t);
     gain.gain.exponentialRampToValueAtTime(.0001, t + tail);
     src.connect(filter).connect(gain).connect(audio.destination);
     src.start(t,Math.random()*.09); src.stop(t + tail);
-    tone([170, 230, 150][weapon], 40, tail * .9, .19 * volume);
-    surfaceNoise([2200,3000,1700][weapon],.032,.09*volume,.016);
+    tone([170,150][weapon], 40, tail * .9, .19 * volume);
+    surfaceNoise([2200,1700][weapon],.032,.09*volume,.016);
   }
   function surfaceNoise(hz, seconds, volume, delay=0) {
     if (muted || !audio || audio.state !== 'running') return;
@@ -111,10 +113,11 @@
     return {
       id, name: String(name || 'PLAYER').slice(0, 20),
       x: 0, z: 0, feet: 0, vy: 0, yaw: 0, pitch: 0, grounded: true,
-      weapon: 0, mags: guns.map(g => g.cap), stock: guns.map(g => g.reserve),
+      weapon: 0, previousWeapon:1, mags: guns.map(g => g.cap), stock: guns.map(g => g.reserve),
       hp: 100, kills: 0, deaths: 0, respawnAt: 0, safeUntil: 0, nextShot: 0,
       reloadAt:0,reloadEmpty:false,reloadCue:-1,flashUntil:0,
-      modes:['auto','auto','semi'],triggerHeld:false,pressUntil:-1,lastShotAt:-10,shotsFired:0,chain:0,
+      modes:['auto','semi','melee'],triggerHeld:false,pressUntil:-1,lastShotAt:-10,shotsFired:0,chain:0,
+      lastSwingAt:-10,swings:0,pendingSwing:null,
       kickUp:0,kickUpSpeed:0,kickSide:0,kickSideSpeed:0,kickTime:0,deathYaw:0,deathFloor:0,
       poses:[], poseAt:null, spawnNo:0
     };
@@ -131,6 +134,8 @@
     p.yaw = s.yaw ?? (first ? -.55 : Math.atan2(-p.x, p.z));
     p.pitch = 0; p.hp = 100; p.respawnAt = p.reloadAt = 0; p.spawnNo++;
     p.poses.length=0;p.poseAt=null;
+    p.pendingSwing=null; p.lastSwingAt=-10; p.swings=0;
+    if (p.spawnNo===1 || p.previousWeapon===p.weapon) p.previousWeapon=p.weapon===0?1:0;
     rememberPose(p,round.time);
     p.reloadCue=-1; p.reloadEmpty=false; p.triggerHeld=false; p.pressUntil=-1; p.lastShotAt=-10; p.shotsFired=0;
     resetKick(p);
@@ -287,14 +292,24 @@
         refreshVitals();
       }
     }
-    if (e.kind === 'shot') {
+    if (e.kind === 'swing') {
+      const actor=players.get(e.source);
+      if (actor && actor!==self && actor.spawnNo===e.spawn && e.serial>=actor.swings) {
+        actor.swings=e.serial; actor.lastSwingAt=e.at;
+        surfaceNoise(1300,.12,.12/(1+Math.hypot(actor.x-self.x,actor.z-self.z)*.22));
+      }
+    }
+    if (e.kind === 'shot' || e.kind === 'slash') {
       const shooter = players.get(e.source);
       if (!shooter) return;
-      shooter.flashUntil = Math.max(round.time,e.at) + .075;
-      if (shooter !== self) {
-        shooter.lastShotAt=e.at; shooter.shotsFired=e.serial;
-        const distance = Math.hypot(shooter.x-self.x, shooter.z-self.z);
-        blast(shooter.weapon, .48 / (1 + distance*.12));
+      if (e.kind === 'shot') {
+        shooter.flashUntil = Math.max(round.time,e.at) + .075;
+        if (shooter !== self) {
+          shooter.lastShotAt=e.at; shooter.shotsFired=e.serial;
+          const distance = Math.hypot(shooter.x-self.x, shooter.z-self.z);
+          const weapon=e.weapon??shooter.weapon;
+          if (guns[weapon] && !guns[weapon].melee) blast(weapon, .48 / (1 + distance*.12));
+        }
       }
       if (e.victim === self.id) { hurt = .38; tone(95, 48, .11, .11); }
       if (e.victim && shooter === self) { hit = .19; tone(900, 650, .045, .065); }
@@ -306,6 +321,10 @@
           name:struck.name, hp:e.hpAfter, protected:Boolean(e.protectedId), until:now()+1.15
         };
         if (struck === self || shooter === self) refreshVitals();
+      }
+      if (e.kind==='slash') {
+        if (e.impact && (shooter===self || struck===self)) surfaceNoise(struck?370:1900,.055,.17);
+        return;
       }
       const [x,y,z] = e.to;
       effects.push({x,y,z,ax:e.from[0],ay:e.from[1],az:e.from[2],type:'trace',life:.075});
@@ -336,7 +355,7 @@
   }
   function beginReload(p, notifyHost=true) {
     const i = p.weapon;
-    if (p.hp <= 0 || p.reloadAt || p.mags[i] >= guns[i].cap || !p.stock[i]) return;
+    if (guns[i].melee || p.hp <= 0 || p.reloadAt || p.mags[i] >= guns[i].cap || !p.stock[i]) return;
     p.reloadEmpty=p.mags[i]===0; p.reloadCue=-1; p.pressUntil=-1;
     p.reloadAt=round.time+(p.reloadEmpty?guns[i].emptyLoad:guns[i].load);
     reloadCues(p,0);
@@ -348,17 +367,19 @@
   function changeWeapon(p, i) {
     if (!Number.isInteger(i) || !guns[i] || p.weapon === i || p.hp <= 0) return;
     if (p.triggerHeld) setTrigger(p,false);
-    p.weapon = i; p.reloadAt = 0; p.reloadEmpty=false; p.reloadCue=-1; p.pressUntil=-1;
+    p.previousWeapon=p.weapon; p.weapon=i; p.reloadAt=0; p.reloadEmpty=false; p.reloadCue=-1; p.pressUntil=-1;
+    p.pendingSwing=null; p.lastSwingAt=-10; p.flashUntil=0;
     p.nextShot = Math.max(p.nextShot, round.time + .22);
     resetKick(p);
     if (p === self) {
-      muzzle = 0; fireHeld=false; switchedAt = round.time;
+      muzzle = 0; fireHeld=false; aimHeld=false; aim=0; switchedAt = round.time;
       tone(420, 140, .06, .038, 'triangle');
       if (!authority()) send({t:'weapon',i,seq:++clientShot,spawn:p.spawnNo}, window.LAN.hostId);
+      ui('hud',viewState());
     }
   }
   function changeFireMode(p,mode) {
-    if (p.weapon===2 || !['semi','auto'].includes(mode) || p.modes[p.weapon]===mode || !p.hp) return;
+    if (p.weapon!==0 || !['semi','auto'].includes(mode) || p.modes[p.weapon]===mode || !p.hp) return;
     if (p.triggerHeld) setTrigger(p,false);
     p.pressUntil=-1; p.modes[p.weapon]=mode;
     if (p===self) {
@@ -397,7 +418,26 @@
     const pressed=p.pressUntil>=time,auto=p.modes[p.weapon]==='auto';
     if (!(pressed || (p.triggerHeld && auto)) || p.hp<=0 || p.reloadAt || time+.00001<p.nextShot || round.ended) return;
     p.pressUntil=-1;
-    discharge(p,time,auto&&!pressed);
+    if (guns[p.weapon].melee) beginSwing(p,time);
+    else discharge(p,time,auto&&!pressed);
+  }
+  function attackViewTime(p) {
+    return p===self ? localShotTime() : round.time-(p.sightDelay??interpolationDelay);
+  }
+  function beginSwing(p,time) {
+    const knife=guns[p.weapon];
+    p.lastSwingAt=time; p.nextShot=time+knife.delay; p.swings++; p.safeUntil=0;
+    if (p===self) surfaceNoise(1300,.12,.20);
+    if (!authority()) return;
+    p.pendingSwing={at:time+knife.contact,origin:[p.x,p.feet+eyes+eyeBob(p),p.z],
+      yaw:p.yaw,pitch:p.pitch,seenAt:attackViewTime(p)};
+    echo({kind:'swing',source:p.id,spawn:p.spawnNo,at:time,serial:p.swings});
+  }
+  function swingProgress(p,time) {
+    const knife=guns[p.weapon];
+    if (!knife.melee || p.hp<=0 || p.swings===0) return -1;
+    const progress=(time-p.lastSwingAt)/knife.duration;
+    return progress<1 ? Math.max(0,progress) : -1;
   }
   function discharge(p,time,held) {
     const i = p.weapon, gun = guns[i];
@@ -423,12 +463,28 @@
     const jitter=gun.spread*(ads ? .33 : 1)*Math.min(1,p.chain/3);
     const yaw=p.yaw+yawKick+(Math.random()-.5)*jitter*2;
     const pitch=p.pitch+pitchKick+(Math.random()-.5)*jitter*2;
+    const origin=[p.x,p.feet+eyes+eyeBob(p),p.z];
+    resolveImpact(p,time,traceAttack(p,origin,yaw,pitch,80,attackViewTime(p)));
+  }
+  function finishSwing(p,time) {
+    const swing=p.pendingSwing;
+    if (!swing || time<swing.at) return;
+    p.pendingSwing=null;
+    // Each part of the short arc has its own wall test. Pick one contact for the entire swing.
+    const range=guns[p.weapon].range;
+    let contact=traceAttack(p,swing.origin,swing.yaw,swing.pitch,range,swing.seenAt);
+    for (const offset of [-.15,.15,-.30,.30]) {
+      const next=traceAttack(p,swing.origin,swing.yaw+offset,swing.pitch,range,swing.seenAt);
+      if (next.victim && (!contact.victim || next.distance<contact.distance)) contact=next;
+      else if (!contact.victim && next.distance<contact.distance) contact=next;
+    }
+    resolveImpact(p,time,contact);
+  }
+  function traceAttack(p,o,yaw,pitch,range,seenAt) {
     const cp = Math.cos(pitch), d = [Math.sin(yaw)*cp,Math.sin(pitch),-Math.cos(yaw)*cp];
-    const o = [p.x,p.feet+eyes+eyeBob(p),p.z];
-    const surface = {}, barrier = wallDistance(o, d, 80, surface);
+    const surface = {}, barrier = wallDistance(o, d, range, surface);
     // Use the same history as the remote actor renderer. The shooter reports the
     // host-clock instant it was displaying, never a victim or a damage value.
-    const seenAt=p===self ? localShotTime() : round.time-(p.sightDelay??interpolationDelay);
     let distance = barrier, victim = null, critical = false;
     for (const target of players.values()) {
       if (target === p || target.hp <= 0) continue;
@@ -437,21 +493,27 @@
         distance=impact.distance; victim=target; critical=impact.critical;
       }
     }
+    return {o,d,yaw,distance,range,victim,critical,wall:surface.wall};
+  }
+  function resolveImpact(p,time,{o,d,yaw,distance,range,victim,critical,wall}) {
+    const gun=guns[p.weapon], melee=!!gun.melee;
     const damaged = victim && victim.safeUntil <= round.time;
     if (damaged) {
-      const damage = Math.round(gun.damage * (critical ? 1.7 : 1));
+      const damage = Math.round(gun.damage * (critical && !melee ? 1.7 : 1));
       victim.hp = Math.max(0,victim.hp-damage);
     }
     const from = [o[0]+d[0]*.45+Math.cos(yaw)*.13,o[1]-.13,o[2]+d[2]*.45+Math.sin(yaw)*.13];
     const to=o.map((v,j)=>v+d[j]*distance);
-    echo({kind:'shot',at:time,serial:p.shotsFired,source:p.id,victim:damaged ? victim.id : null,from,to,
+    echo({kind:melee?'slash':'shot',weapon:p.weapon,at:time,serial:melee?p.swings:p.shotsFired,
+      source:p.id,victim:damaged ? victim.id : null,from,to,
       protectedId:victim && !damaged ? victim.id : null,victimSpawn:victim?.spawnNo,hpAfter:victim?.hp,
-      impact:distance<80,normal:!victim && distance<80 ? impactNormal(to,surface.wall) : null});
+      impact:distance<range,normal:!melee && !victim && distance<range ? impactNormal(to,wall) : null});
     if (damaged && !victim.hp) {
       const deathTime = round.time + Math.max(0, now() - lastTick);
       p.kills++; victim.deaths++; victim.respawnAt = deathTime + respawnSeconds; victim.reloadAt = 0;
       victim.deathYaw=Math.atan2(d[0],-d[2]);
       victim.deathFloor=floorBelow(victim);
+      victim.pendingSwing=null;
       echo({kind:'frag',source:p.id,killer:p.name,victim:victim.name,target:victim.id,
         at:deathTime,yaw:victim.deathYaw,spawn:victim.spawnNo,x:victim.x,z:victim.z,feet:victim.feet,floor:victim.deathFloor});
     }
@@ -511,6 +573,7 @@
       mt:p.poses.length?p.poses[p.poses.length-1].stamp:round.time,
       hp:p.hp,k:p.kills,d:p.deaths,spawn:p.spawnNo,safe:p.safeUntil,resp:p.respawnAt,
       reload:p.reloadAt,empty:p.reloadEmpty,modes:p.modes,shot:p.lastShotAt,serial:p.shotsFired,
+      swing:p.lastSwingAt,swings:p.swings,
       fall:p.deathYaw,floor:p.deathFloor,ammo:p.mags,stock:p.stock,ack:p.ack||0};
   }
   function snapshot(to) {
@@ -545,6 +608,7 @@
         } else if (!p.triggerHeld) p.shotsFired=a.serial;
         p.reloadEmpty=a.empty; p.modes=a.modes.slice();
       }
+      if (fresh || p!==self) {p.lastSwingAt=a.swing??-10;p.swings=a.swings??0;}
       if (p!==self) {
         p.x=a.x;p.z=a.z;p.feet=a.f;p.yaw=a.a;p.pitch=a.b;
         if(fresh || !p.hp)p.poses.length=0;
@@ -671,6 +735,7 @@
           if (p===self) tone(340,560,.045,.027,'triangle');
         }
       }
+      if (p.pendingSwing) finishSwing(p,round.time);
       if ((p===self && phase==='playing' && clientReady) || (authority() && p!==self)) serviceTrigger(p,round.time);
     }
     checkLife();
@@ -695,7 +760,8 @@
       const age=p.hp>0?-1:Math.max(0,time-p.respawnAt+respawnSeconds);
       const pose=p.hp>0?visiblePoseAt(p,displayTime):p;
       return {id:p.id,name:p.name,x:pose.x,y:p.hp>0?pose.feet:actorFeet(p,age),z:pose.z,yaw:pose.yaw,pitch:pose.pitch,team:'enemy',alive:p.hp>0,
-        flash:p.hp>0 && p.flashUntil>time,hp:p.hp,weapon:p.weapon,spawnNo:p.spawnNo,fireMode:p.modes[p.weapon],
+        flash:p.hp>0 && !guns[p.weapon].melee && p.flashUntil>time,hp:p.hp,weapon:p.weapon,spawnNo:p.spawnNo,fireMode:p.modes[p.weapon],
+        swingProgress:swingProgress(p,time),swingSerial:p.swings,
         reload:reloadProgress(p,time),reloadEmpty:p.reloadEmpty,shotSerial:p.shotsFired,shotAge:Math.max(0,time-p.lastShotAt),
         deathAge:age,deathYaw:p.deathYaw};
     });
@@ -706,7 +772,8 @@
       invulnerable:self.safeUntil>time,time,recoil:clamp(self.kickUp,0,1.5),recoilSide:clamp(self.kickSide,-1,1),
       flash:muzzle>0?muzzle/.065:0,hit,hurt,aim,killConfirm:clamp(killConfirm/.48,0,1),deathAge,
       targetFeedback:currentTarget(),
-      fireMode:self.modes[self.weapon],canToggleFireMode:self.weapon!==2,reloadEmpty:self.reloadEmpty,
+      fireMode:self.modes[self.weapon],canToggleFireMode:self.weapon===0,reloadEmpty:self.reloadEmpty,
+      melee:!!g.melee,swingProgress:swingProgress(self,time),swingSerial:self.swings,
       reloadStage:reload<0?'':reload<.47?'取匣':reload<.86?'装匣':'就绪',
       bob,moving:walking,sprinting:running,reload,shotSerial,switchProgress:clamp(1-(time-switchedAt)/.22,0,1),
       actors,fx:effects.concat(marks),name:self.name,mode:round.mode,map:round.map,phase,controlsEngaged,
@@ -830,9 +897,10 @@
     if (e.repeat) return;
     if (e.code==='Space') jumpPressed=true;
     if (e.code==='KeyR') beginReload(self);
+    if (e.code==='KeyQ') changeWeapon(self,self.previousWeapon);
     if (e.code==='KeyB') {
-      if (self.weapon===2) ui('notify','这把手枪使用单发模式');
-      else changeFireMode(self,self.modes[self.weapon]==='auto'?'semi':'auto');
+      if (self.weapon===0) changeFireMode(self,self.modes[0]==='auto'?'semi':'auto');
+      else if (self.weapon===1) ui('notify','这把手枪使用单发模式');
     }
     if (/^Digit[123]$/.test(e.code)) changeWeapon(self,Number(e.code.slice(-1))-1);
   });
@@ -852,7 +920,7 @@
     // A restricted browser can still use click-and-drag if pointer lock was denied.
     if (!controlsEngaged) { controlsEngaged=true; ui('hud',viewState()); return; }
     if (e.button===0) { fireHeld=true; setTrigger(self,true); }
-    if (e.button===2) { aimHeld=true; e.preventDefault(); }
+    if (e.button===2) { aimHeld=!guns[self.weapon].melee; e.preventDefault(); }
   });
   document.addEventListener('mouseup',e=>{
     if (!e.buttons) drag=null;
@@ -865,8 +933,21 @@
     else if (drag) { look(e.clientX-drag.x,e.clientY-drag.y); drag={x:e.clientX,y:e.clientY}; }
   });
   document.addEventListener('wheel',e=>{
-    if (phase!=='playing' || !self || !e.deltaY || document.querySelector('dialog[open]')) return;
-    e.preventDefault(); changeWeapon(self,(self.weapon+(e.deltaY>0 ? 1 : 2))%3);
+    if (phase!=='playing' || !self || !clientReady || !e.deltaY || document.querySelector('dialog[open]')) return;
+    e.preventDefault();
+    const direction=Math.sign(e.deltaY), amount=Math.abs(e.deltaY), time=now();
+    // Browsers deliver wheel notches as lines/pages or coarse pixel multiples.
+    // A trackpad streams many small pixel deltas, including momentum after lift.
+    const notch=e.deltaMode===1 || e.deltaMode===2 || amount%100===0 || amount%120===0;
+    if (!notch) {
+      if (time-wheelGesture.at>.15 || direction!==wheelGesture.direction) {
+        wheelGesture.pixels=0; wheelGesture.switched=false;
+      }
+      wheelGesture.at=time; wheelGesture.direction=direction; wheelGesture.pixels+=amount;
+      if (wheelGesture.pixels<36 || wheelGesture.switched) return;
+      wheelGesture.switched=true;
+    } else wheelGesture.at=-1;
+    changeWeapon(self,(self.weapon+direction+guns.length)%guns.length);
   },{passive:false});
   document.addEventListener('contextmenu',e=>{ if (phase==='playing') e.preventDefault(); });
   document.addEventListener('pointerlockchange',()=>{
@@ -882,7 +963,7 @@
   window.addEventListener('blur',loseFocus);
   document.addEventListener('visibilitychange',()=>{ if (document.hidden) loseFocus(); });
   window.Game={start,preview,resume,pause,quit,respawnSeconds,
-    selectWeapon(i){ if (self && phase==='playing') changeWeapon(self,i); },
+    selectWeapon(i){ if (self && clientReady && phase==='playing') changeWeapon(self,i); },
     toggleSound(){ muted=!muted; if (!muted) wakeAudio(); return !muted; },
     setSound(enabled){ muted=!enabled; if (enabled) wakeAudio(); },
     get soundEnabled(){ return !muted; },

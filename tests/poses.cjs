@@ -34,12 +34,14 @@ for(let dir=0;dir<8;dir++){
   }
   const spawned=A.sampleMotion({...actor,y:0,spawnNo:2,alive:true,reload:.44},18);
   assert.equal(spawned.coverage,1);assert.equal(spawned.fallYaw,null);
-  assert(spawned.magShift[1]<-.16);
+  if(actor.weapon===2) assert(spawned.magShift.every(v=>v===0),'knife has no third-person magazine motion');
+  else assert(spawned.magShift[1]<-.16);
 }
-const source=fs.readFileSync(__dirname+'/../src/weapon.js','utf8').replace('window.Weapon={draw,preview}', 'window.Weapon={draw,preview,reloadPose,models}');
+const source=fs.readFileSync(__dirname+'/../src/weapon.js','utf8').replace('window.Weapon={draw,preview}', 'window.Weapon={draw,preview,reloadPose,knifePose,models}');
 vm.runInContext(source,context);
 const W=context.window.Weapon;
-for(const model of W.models){
+assert.equal(W.models.length,3);
+for(const model of W.models.slice(0,2)){
   assert(model.faces.some(f=>f.group==='action'));assert(model.faces.some(f=>f.group==='mag'));
   for(const empty of [true,false]){
     const poses=Array.from({length:101},(_,i)=>W.reloadPose(i*.01,model.index,empty));
@@ -50,4 +52,48 @@ for(const model of W.models){
   }
   assert(W.reloadPose(.84,model.index,true).finish>3*W.reloadPose(.84,model.index,false).finish);
 }
-console.log('Verified three first-person reloads, eight directions of third-person collapse, ground contact, fade, respawn, and remote magazine pose.');
+const knife=W.models[2];
+assert(!knife.faces.some(f=>f.group==='action'||f.group==='mag'));
+for (const empty of [false,true]) for(const t of [.16,.44,.84]) {
+  const pose=W.reloadPose(t,2,empty);
+  assert([...pose.mag,...pose.hand,pose.lift,pose.seat,pose.finish].every(v=>v===0));
+}
+function transform(m,pos,point) {
+  return pos.map((v,i)=>v+m[i*3]*point[0]+m[i*3+1]*point[1]+m[i*3+2]*point[2]);
+}
+const distance=(a,b)=>Math.hypot(...a.map((v,i)=>v-b[i]));
+const cameraTip=(progress,serial,equip=0)=>{
+  const pose=W.knifePose({swingProgress:progress,swingSerial:serial,switchProgress:equip});
+  assert([...pose.m,...pose.pos].every(Number.isFinite));
+  return transform(pose.m,pose.pos,[0,.99,-.115]);
+};
+const rest=cameraTip(-1,1);
+for (const serial of [1,2]) {
+  const samples=Array.from({length:51},(_,i)=>cameraTip(i/50,serial));
+  assert(distance(samples[0],rest)<.001 && distance(samples[50],rest)<.001,'return to the resting guard');
+  assert(Math.max(...samples.map(tip=>distance(tip,rest)))>.45,'first-person blade must visibly swing');
+  for(let i=1;i<samples.length;i++) assert(distance(samples[i],samples[i-1])<.45,'continuous first-person knife motion');
+}
+assert(distance(cameraTip(.40,1),cameraTip(.40,2))>.20,'successive slashes use distinct arcs');
+assert(distance(rest,cameraTip(-1,1,1))>.20,'drawing the knife starts away from the resting pose');
+
+const operator={id:'slash',x:0,y:0,z:0,yaw:0,pitch:0,spawnNo:1,weapon:2,alive:true,shotSerial:0,reload:-1,swingSerial:1};
+function remotePoints(progress) {
+  const pose=A.sampleMotion({...operator,swingProgress:progress},22);
+  function joint(bone,point) {
+    const b=pose.bones,offset=bone*12;
+    return [0,1,2].map(i=>{
+      const row=offset+i*4;
+      return b[row]*point[0]+b[row+1]*point[1]+b[row+2]*point[2]+b[row+3];
+    });
+  }
+  return [joint(8,[.247,.912,-.028]),joint(15,[0,.14,-.32])];
+}
+const guard=remotePoints(-1);
+const swinging=Array.from({length:21},(_,i)=>remotePoints(i/20));
+for (const index of [0,1]) {
+  assert(Math.max(...swinging.map(points=>distance(points[index],guard[index])))>.15,
+    'the third-person right hand and weapon must both move during the slash');
+  assert(distance(swinging[20][index],guard[index])<.01,'remote slash returns to guard');
+}
+console.log('Verified rifle and pistol reload poses, first- and third-person knife swings, eight collapse directions, ground contact, fade and respawn.');

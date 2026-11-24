@@ -12,6 +12,10 @@ dialog,.matchcard{color:var(--fg);border:1px solid #596056;background:#1d2421;bo
 .mapdesc{margin:13px 0}.legend{font-size:12px!important;margin-top:9px}.legend span{color:#e5aa79}
 .field select{font:inherit;background:#171e1a;border:1px solid #4e584c;color:var(--fg);padding:9px 10px}.field select:focus-visible{outline:2px solid var(--orange);outline-offset:2px}
 .munition{min-width:120px}
+#weaponSlots{display:flex;justify-content:flex-end;gap:8px;margin-top:7px}
+#weaponSlots small{font:11px var(--sans);color:#ced4c9;border-bottom:2px solid transparent;padding-bottom:2px}
+#weaponSlots .equipped{color:#ffd0a0;border-color:var(--orange)}
+#knifeAction{font:600 15px var(--sans);margin:6px 0;color:#efe4d0}
 #fireSetting{display:flex;align-items:center;justify-content:flex-end;gap:6px;margin-top:5px}
 #fireModeLabel{font:600 12px var(--sans);color:#e6e9d9}
 #fireModeKey{font:10px var(--mono);padding:0 4px;border-color:#718071;box-shadow:none;color:#d8dece;background:#29362b}
@@ -198,7 +202,7 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Web.Script.Serialization;
 
-public static class GreyportLobby_60798d1df775
+public static class GreyportLobby_985471761739
 {
     const int Capacity = 8;
     const int MaxBody = 256 * 1024;
@@ -418,7 +422,7 @@ public static class GreyportLobby_60798d1df775
                         IPAddress.IsLoopback(peerEndpoint.Address);
                     string cors=fileProbe ? "Access-Control-Allow-Origin: null\r\nAccess-Control-Allow-Methods: GET\r\nAccess-Control-Allow-Private-Network: true\r\nVary: Origin\r\n" : "";
                     if(verb=="OPTIONS" && !fileProbe)throw new Problem(403,"不允许跨站访问。");
-                    byte[] identity=verb=="GET"?Utf8.GetBytes("{\"game\":\"greyport-arena\",\"directPlay\":2}"):new byte[0];
+                    byte[] identity=verb=="GET"?Utf8.GetBytes("{\"game\":\"greyport-arena\",\"directPlay\":3}"):new byte[0];
                     Reply(stream,200,"application/json; charset=utf-8",identity,cors);return;
                 }
                 if(verb=="GET"){
@@ -546,7 +550,7 @@ public static class GreyportLobby_60798d1df775
                 var data=Json.DeserializeObject(reader.ReadToEnd()) as Dictionary<string,object>;
                 object version;
                 return data!=null && Field(data,"game")=="greyport-arena" &&
-                    data.TryGetValue("directPlay",out version) && Object.Equals(version,2);
+                    data.TryGetValue("directPlay",out version) && Object.Equals(version,3);
             }
         }catch(WebException){return false;}catch(IOException){return false;}catch(ArgumentException){return false;}
         catch(InvalidOperationException){return false;}
@@ -606,10 +610,11 @@ public static class GreyportLobby_60798d1df775
  <div id="elimination" role="status"><span>击败</span><strong id="defeatedName"></strong></div>
  <div id="targetHealth" hidden><div><span id="targetName"></span><b id="targetReading"></b></div><div class="targetTrack"><i id="targetFill"></i></div></div>
  <div class="vitals"><div class="healthrow"><i data-i="medical"></i><b id="hp">100</b><small>HP</small></div><div class="healthtrack"><b id="hpbar"></b></div><div class="scoreline"><span>击败 <b id="kills">0</b></span><span>阵亡 <b id="deaths">0</b></span></div></div>
- <div class="munition"><div id="weapLabel">AR-24</div><div><b id="ammo">30</b> <span>/</span> <em id="reserve">90</em></div>
+ <div class="munition"><div id="weapLabel">AR-24</div><div id="ammoLine"><b id="ammo">30</b> <span>/</span> <em id="reserve">120</em></div><div id="knifeAction" hidden>左键挥刀</div>
  <div id="fireSetting"><i class="burstGlyph" aria-hidden="true"><i></i><i></i><i></i></i><strong id="fireModeLabel">连发</strong><kbd id="fireModeKey">B</kbd></div>
- <div id="reloadMeter" hidden><small id="gunstatus">换弹中</small><div class="reloadTrack"><i id="reloadFill"></i></div></div></div>
- <div id="fieldHint"><strong>点击画面控制视角</strong><span>WASD 移动 · 左键开火 · R 换弹 · Esc 菜单</span></div>
+ <div id="reloadMeter" hidden><small id="gunstatus">换弹中</small><div class="reloadTrack"><i id="reloadFill"></i></div></div>
+ <div id="weaponSlots" aria-label="武器快捷键"><small class="equipped">1 步枪</small><small>2 手枪</small><small>3 刀</small></div></div>
+ <div id="fieldHint"><strong>点击画面控制视角</strong><span>WASD 移动 · 左键攻击 · Q 切回上一把 · Esc 菜单</span></div>
  <div id="roomtag"></div><div id="hurt"></div></div>
  <div id="matchOverlay" hidden><div class="matchcard"><div class="eyebrow" id="matchEn"></div><h2 id="matchTitle"></h2><p id="matchText"></p><div id="matchMore"></div><div id="matchActions"></div></div></div>
 </div>
@@ -737,30 +742,6 @@ public static class GreyportLobby_60798d1df775
       box(0,-.803,.194,.213,.068,.285,mat.grip,.013);
       group='gun';
     } else if(index===1){
-      rear=-1.02;tip=1.20;supportZ=.45;
-      for(const s of [-1,1]) tube([s*.09,.0,-.95],[s*.09,.022,-.42],.041,.042,mat.light);
-      box(0,-.12,-.98,.23,.48,.10,mat.grip,.035);
-      profile(0,.36,[[-.58,-.16],[-.42,-.28],[.41,-.27],[.68,-.09],[.67,.11],[.51,.187],[-.48,.187],[-.58,.10]],mat.iron);
-      box(0,.105,-.16,.38,.16,.85,mat.plate,.044);
-      box(0,.198,-.12,.32,.043,.75,mat.dark);
-      profile(0,.391,[[.19,-.145],[.57,-.15],[.73,-.034],[.68,.13],[.19,.13]],mat.black);
-      for(let j=0;j<4;j++)sides(.015,.261+j*.097,.399,.127,.036,mat.plate);
-      barrel(.67,.88,.11,mat.iron);
-      barrel(.86,tip,.152,mat.black);
-      barrel(.95,.99,.154,mat.blue);
-      barrel(1.13,1.16,.154,mat.plate);
-      sides(-.13,-.12,.365,.065,.39,mat.blue);
-      for(const s of [-1,1])text(s*.193,.117,-.235,.064,.243,'VX–9');
-      sides(.015,-.28,.371,.071,.22,mat.dark);
-      bolt(.06,.12,.383); bolt(-.12,-.42,.366);
-      group='action';sides(.044,-.052,.389,.051,.14,mat.light);group='gun';
-      eye=optical(.255,-.32,true);
-      group='mag';
-      profile(0,.156,[[.015,-.22],[.229,-.22],[.26,-.88],[.035,-.91]],mat.iron);
-      for(let j=0;j<4;j++) sides(-.36-j*.115,.137,.164,.039,.147,mat.dark);
-      box(0,-.89,.145,.178,.067,.25,mat.blue);
-      group='gun';
-    } else {
       rear=-.57;tip=.814;supportZ=-.16;
       profile(0,.246,[[-.52,-.18],[-.27,-.238],[.25,-.205],[.65,-.11],[.68,.05],[-.48,.055]],mat.grip);
       group='action';
@@ -782,13 +763,44 @@ public static class GreyportLobby_60798d1df775
       group='mag';
       profile(0,.118,[[-.386,-.635],[-.281,-.635],[-.221,-.239],[-.32,-.232]],mat.dark);
       box(0,-.673,-.35,.203,.09,.253,mat.iron,.022);group='gun';
+    } else {
+      // Each cross-section catches the scene light separately along the blade's bevels.
+      rear=-.43;tip=.04;eye=0;supportZ=0;
+      const steel='#899b9e',ridge='#4f656c',bevel='#d3dddd',edge='#f3eee2';
+      const sections=[[-.15,-.35,-.14,.036],[-.055,-.36,-.09,.045],
+        [.47,-.36,-.065,.041],[.67,-.32,-.09,.032],[.78,-.255,-.11,.019]];
+      for(const sign of [-1,1]){
+        const rows=sections.map(([y,back,front,r])=>[
+          [sign*.009,y,back],[sign*r,y,back+(front-back)*.28],[sign*r*.83,y,back+(front-back)*.70],
+          [sign*.002,y,front]]);
+        for(let j=1;j<rows.length;j++)for(let k=0;k<3;k++){
+          face([rows[j-1][k],rows[j][k],rows[j][k+1],rows[j-1][k+1]],[sign,0,0],[steel,ridge,bevel][k]);
+        }
+        const last=rows.at(-1),point=[0,.99,-.115];
+        for(let k=0;k<3;k++)face([last[k],point,last[k+1]],[sign,0,0],[steel,ridge,edge][k]);
+        for(let i=0;i<3;i++)box(sign*.046,.005+i*.032,-.22,.002,.009,.038,mat.stripe,0,false);
+      }
+      for(let j=1;j<sections.length;j++){
+        const [y0,b0]=sections[j-1],[y1,b1]=sections[j];
+        face([[-.009,y0,b0],[.009,y0,b0],[.009,y1,b1],[-.009,y1,b1]],[0,0,-1],steel);
+      }
+      box(0,-.185,-.237,.19,.085,.43,mat.iron,.026);
+      box(0,-.161,-.234,.15,.026,.30,mat.stripe,.009);
+      profile(0,.166,[[-.33,-.22],[-.129,-.22],[-.116,-.34],[-.153,-.61],[-.13,-.699],
+        [-.164,-.752],[-.312,-.754],[-.352,-.701],[-.321,-.561],[-.343,-.35]],'#454e4e');
+      for(let j=0;j<6;j++)sides(-.275-j*.065,-.231,.169,.017,.157,mat.dark);
+      bolt(-.31,-.23,.168);bolt(-.65,-.233,.168);
+      box(0,-.745,-.24,.19,.068,.21,mat.iron,.018);
+      box(0,-.729,-.24,.192,.017,.202,mat.stripe,.003);
     }
-    const g=index===2?-.255:index===1?-.29:-.42;
-    profile(0,.185,[[g-.08,-.112],[g+.129,-.19],[g+.026,-.673],[g-.164,-.695],[g-.182,-.61]],mat.grip);
-    for(let j=0;j<4;j++) sides(-.32-j*.079,g-.04-j*.012,.193,.025,.144,mat.dark);
-    tube([0,-.28,g+.095],[0,-.428,g+.128],.018,.015,mat.light,6);
-    tube([0,-.19,g+.35],[0,-.38,g+.291],.023,.022,mat.black,6);
-    tube([0,-.38,g+.291],[0,-.403,g+.101],.022,.024,mat.black,6);
+    const g=index===0?-.42:index===1?-.255:-.265;
+    if(index!==2){
+      profile(0,.185,[[g-.08,-.112],[g+.129,-.19],[g+.026,-.673],[g-.164,-.695],[g-.182,-.61]],mat.grip);
+      for(let j=0;j<4;j++) sides(-.32-j*.079,g-.04-j*.012,.193,.025,.144,mat.dark);
+      tube([0,-.28,g+.095],[0,-.428,g+.128],.018,.015,mat.light,6);
+      tube([0,-.19,g+.35],[0,-.38,g+.291],.023,.022,mat.black,6);
+      tube([0,-.38,g+.291],[0,-.403,g+.101],.022,.024,mat.black,6);
+    }
     // The sleeves and gloves share the muted fabric and leather finishes of the field uniform.
     function hand(left) {
       group=left?'support':'firing';
@@ -830,6 +842,7 @@ public static class GreyportLobby_60798d1df775
         }
       }
       const arm=t=>elbow.map((v,j)=>mix(v,wrist[j],t));
+      if(index===2)group='sleeve';
       sweep([[0,.31,.28,0],[.18,.302,.277,.025],[.34,.266,.258,-.055],
         [.40,.294,.275,-.047],[.49,.247,.229,.052],[.55,.263,.251,.033],
         [.68,.212,.203,-.060],[.74,.231,.218,-.036],[.82,.193,.193,.040],
@@ -838,7 +851,8 @@ public static class GreyportLobby_60798d1df775
         [arm(.979),.164,.154],[arm(1.009),.141,.138]],'#384345',12);
       sweep([[arm(.916),.195,.180],[arm(.927),.192,.180],
         [arm(.957),.180,.168],[arm(.966),.172,.162]],binding,12);
-      const palm=[s*(left?.191:.134),left&&index!==2?-.225:-.391,z+.019];
+      if(index===2)group='firing';
+      const palm=[s*(left?.191:.134),left&&index===0?-.225:-.391,z+.019];
       const half=wrist.map((v,j)=>mix(v,palm[j],.54));
       sweep([[wrist,.137,.125],[half,.143,.142,-.012],[palm,.130,.155,.009],
         [[palm[0],palm[1]+.043,palm[2]+.02],.095,.105]],glove,13);
@@ -848,7 +862,7 @@ public static class GreyportLobby_60798d1df775
       sweep([[padA,.043,.032],[padA.map((v,j)=>mix(v,padB[j],.44)),.076,.047],
         [padB,.046,.020]],suede,10);
       for(let i=0;i<4;i++){
-        if(left&&index!==2){
+        if(left&&index===0){
           const fz=z-.092+i*.071;
           const rise=Math.sin((i+.4)*.75)*.017;
           sweep([[[-.257,-.219,fz-.024],.040,.034],
@@ -866,12 +880,12 @@ public static class GreyportLobby_60798d1df775
         }
       }
       const thumbRoot=[palmX+s*.022,palmY+.027,z-.10];
-      const thumbEnd=left&&index!==2?[-.149,-.032,z+.09]:[s*.115,palmY+.146,z+.056];
+      const thumbEnd=left&&index===0?[-.149,-.032,z+.09]:[s*.115,palmY+.146,z+.056];
       sweep([[thumbRoot,.067,.066],[[palmX+s*.047,palmY+.078,z-.094],.067,.058],
         [[palmX+s*.022,palmY+.127,z-.018],.055,.049],[thumbEnd,.042,.040],
         [[thumbEnd[0]-s*.013,thumbEnd[1]+.008,thumbEnd[2]+.021],.020,.027]],suede,10);
     }
-    hand(false);hand(true);
+    hand(false);if(index!==2)hand(true);
     return {faces,tip,eye,rear,index};
   }
   const models=[0,1,2].map(rig);
@@ -917,7 +931,7 @@ public static class GreyportLobby_60798d1df775
   }
   const atRest={lift:0,seat:0,finish:0,hand:[0,0,0],mag:[0,0,0]};
   function reloadPose(t,index,empty){
-    if(!(t>0 && t<1))return atRest;
+    if(index===2||!(t>0 && t<1))return atRest;
     const lift=ease(0,.19,t)*(1-ease(.76,1,t));
     const grasp=ease(.075,.235,t)*(1-ease(.73,.90,t));
     const lower=ease(.23,.44,t)*(1-ease(.48,.71,t));
@@ -925,8 +939,8 @@ public static class GreyportLobby_60798d1df775
     const seat=ease(.664,.714,t)*(1-ease(.714,.785,t));
     const finish=(empty?1:.24)*ease(.76,.842,t)*(1-ease(.842,.945,t));
     const mag=[-.37*lower-.07*sweep,-.81*lower+.035*seat,-.23*lower];
-    const hand=[mag[0]-.036*grasp,mag[1]-(index===2?.22:.37)*grasp+.10*finish,
-      mag[2]-[.43,.32,.18][index]*grasp-.12*finish];
+    const hand=[mag[0]-.036*grasp,mag[1]-(index===1?.22:.37)*grasp+.10*finish,
+      mag[2]-(index===1?.18:.43)*grasp-.12*finish];
     return {lift,seat,finish,mag,hand};
   }
   function render(model,options){
@@ -937,6 +951,9 @@ public static class GreyportLobby_60798d1df775
       if(group==='support'||group==='mag'){
         const offset=group==='mag'?pose.mag:pose.hand,weight=group==='mag'?1:ease(-1.52,-.54,y);
         x+=offset[0]*weight;y+=offset[1]*weight;z+=offset[2]*weight;
+      }else if(group==='sleeve'&&pose.forearm){
+        const arm=rotate(sub(p,knifeWrist),pose.forearm);
+        [x,y,z]=arm.map((v,i)=>v+knifeWrist[i]);
       }else if(group==='action')z-=slide;
       const r=rotate([x,y,z],m);
       return [r[0]+pos[0],r[1]+pos[1],r[2]+pos[2]];
@@ -945,8 +962,9 @@ public static class GreyportLobby_60798d1df775
       return [cx+f*p[0]/p[2],cy-f*p[1]/p[2]];
     }
     for(const face of model.faces){
-      if(preview&&(face.group==='firing'||face.group==='support'))continue;
-      const first=modify(face.vertices[0],face.group), normal=rotate(face.n,m);
+      if(preview&&(face.group==='firing'||face.group==='support'||face.group==='sleeve'))continue;
+      const n=face.group==='sleeve'&&pose.forearm?unit(rotate(face.n,pose.forearm)):face.n;
+      const first=modify(face.vertices[0],face.group),normal=rotate(n,m);
       if(dot(first,normal)>-.00001)continue;
       const coords=[first,...face.vertices.slice(1).map(p=>modify(p,face.group))];
       if(coords.some(p=>p[2]<.06))continue;
@@ -989,9 +1007,24 @@ public static class GreyportLobby_60798d1df775
     if(!canvas)return;
     const target=surface(canvas), {w,h}=target;
     if(w<2||h<2)return;
-    const model=models[i]||models[0],m=matrix(-1.23,.075,.055);
+    const model=models[i]||models[0];
+    if(model.index===2){
+      const m=matrix(-1.34,-.08,-1.24),depth=8;
+      let left=Infinity,right=-Infinity,top=-Infinity,bottom=Infinity;
+      for(const face of model.faces){
+        if(face.group!=='gun')continue;
+        for(const vertex of face.vertices){
+          const [x,y,z]=rotate(vertex,m),u=x/(depth+z),v=y/(depth+z);
+          left=Math.min(left,u);right=Math.max(right,u);top=Math.max(top,v);bottom=Math.min(bottom,v);
+        }
+      }
+      const f=Math.min(w*.77/(right-left),h*.72/(top-bottom));
+      render(model,{...target,m,pos:[0,0,depth],f,cx:w*.5-f*(right+left)*.5,cy:h*.5+f*(top+bottom)*.5,preview:true});
+      return;
+    }
+    const m=matrix(-1.23,.075,.055);
     const mid=(model.tip+model.rear)*.5;
-    const len=model.tip-model.rear,depth=8,f=depth*Math.min(w*.84/len,h*.79/(i===2?1.08:1.36));
+    const len=model.tip-model.rear,depth=8,f=depth*Math.min(w*.84/len,h*.79/(i===1?1.08:1.36));
     render(model,{...target,m,pos:[mid*.94,.215,depth],f,cx:w*.5,cy:h*.48,preview:true,reload:0});
   }
   const accelerators=new WeakMap();
@@ -1004,16 +1037,17 @@ public static class GreyportLobby_60798d1df775
     const program=gl.createProgram();
     const vs=`
       attribute vec3 position,normal,color; attribute vec2 surfaceUV,labelUV; attribute float part;
-      uniform mat3 rotation; uniform vec3 translation,magOffset,handOffset; uniform vec2 scale; uniform float slide;
+      uniform mat3 rotation,forearm; uniform vec3 translation,magOffset,handOffset; uniform vec2 scale; uniform float slide;
       varying vec3 N,V,material,P; varying vec2 surf,label; varying float textile;
       void main(){
-        vec3 p=position;
+        vec3 p=position,n=normal;
         if(part>.5 && part<1.5)p+=magOffset;
         else if(part>1.5 && part<2.5)p+=handOffset*smoothstep(-1.52,-.54,p.y);
+        else if(part>4.5){vec3 wrist=vec3(.234,-.53,-.60);p=wrist+forearm*(p-wrist);n=normalize(forearm*n);}
         else if(part>3.5)p.z-=slide;
         vec3 eye=rotation*p+translation;
-        N=rotation*normal; V=eye; P=position; material=color; surf=surfaceUV; label=labelUV;
-        textile=step(1.5,part)*(1.-step(3.5,part));
+        N=rotation*n; V=eye; P=position; material=color; surf=surfaceUV; label=labelUV;
+        textile=step(1.5,part)*(1.-step(3.5,part))+step(4.5,part);
         gl_Position=vec4(eye.xy*scale,eye.z*1.012-.12,eye.z);
       }`;
     const fs=`
@@ -1070,7 +1104,7 @@ public static class GreyportLobby_60798d1df775
         const uv=face.vertices.map(p=>dim.map(k=>p[k]));
         const uvs=[0,1].map(j=>uv.map(p=>p[j]));
         const lo=uvs.map(v=>Math.min(...v)),hi=uvs.map(v=>Math.max(...v));
-        const part={gun:0,mag:1,support:2,firing:3,action:4}[face.group];
+        const part={gun:0,mag:1,support:2,firing:3,action:4,sleeve:5}[face.group];
         const lab=labels.indexOf(face.label),len=face.label?Math.min(250,Math.ceil(type.measureText(face.label).width)+5):0;
         const label=[[0,0],[len/256,0],[len/256,40/256],[0,40/256]];
         for(let i=1;i<face.vertices.length-1;i++)for(const j of [0,i,i+1]){
@@ -1083,7 +1117,7 @@ public static class GreyportLobby_60798d1df775
       gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(data),gl.STATIC_DRAW);return {buffer,count:data.length/14};
     });
     const attribs=['position','normal','color','surfaceUV','labelUV','part'].map(k=>gl.getAttribLocation(program,k));
-    const uniforms=Object.fromEntries(['rotation','translation','scale','magOffset','handOffset','slide','key','exposure'].map(k=>[k,gl.getUniformLocation(program,k)]));
+    const uniforms=Object.fromEntries(['rotation','translation','scale','magOffset','handOffset','forearm','slide','key','exposure'].map(k=>[k,gl.getUniformLocation(program,k)]));
     gl.enable(gl.DEPTH_TEST);gl.depthFunc(gl.LEQUAL);gl.clearColor(0,0,0,0);
     function clear(){gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);}
     function draw(o,m,pos,f,w,h,pose,slide,key,exposure){
@@ -1098,6 +1132,7 @@ public static class GreyportLobby_60798d1df775
       gl.uniformMatrix3fv(uniforms.rotation,false,[m[0],m[3],m[6],m[1],m[4],m[7],m[2],m[5],m[8]]);
       gl.uniform3fv(uniforms.translation,pos);gl.uniform2f(uniforms.scale,2*f/w,2*f/h);
       gl.uniform3fv(uniforms.magOffset,pose.mag);gl.uniform3fv(uniforms.handOffset,pose.hand);
+      if(pose.forearm){const a=pose.forearm;gl.uniformMatrix3fv(uniforms.forearm,false,[a[0],a[3],a[6],a[1],a[4],a[7],a[2],a[5],a[8]]);}
       gl.uniform1f(uniforms.slide,slide);gl.uniform3fv(uniforms.key,key);gl.uniform1f(uniforms.exposure,exposure);
       gl.drawArrays(gl.TRIANGLES,0,entry.count);
       return point=>{const p=rotate(point,m),z=p[2]+pos[2];return [w/2+f*(p[0]+pos[0])/z,h/2-f*(p[1]+pos[1])/z];};
@@ -1129,12 +1164,43 @@ public static class GreyportLobby_60798d1df775
     const horizontal=sn*sun[0]-cs*sun[2];
     return [cs*sun[0]+sn*sun[2],cp*sun[1]-sp*horizontal,cp*horizontal+sp*sun[1]];
   }
+  const knifeWrist=[.234,-.53,-.60],knifeArm=sub([.82,-1.62,-1.20],knifeWrist),armAxis=unit(knifeArm);
+  function knifePose(s){
+    const progress=s.swingProgress??-1,alternate=(s.swingSerial||0)%2===0;
+    const wind=ease(0,.11,progress)*(1-ease(.11,.25,progress));
+    const sweep=ease(.105,.39,progress)*(1-ease(.47,1,progress));
+    const lift=ease(.10,.24,progress)*(1-ease(.24,.49,progress));
+    const equip=clamp(s.switchProgress||0,0,1),stride=s.moving?Math.sin(s.bob||0):0;
+    const pos=[.64+.17*wind-1.16*sweep+.025*stride,
+      -.46+.08*wind+(alternate?.19:-.09)*sweep+.085*lift-.36*equip+.014*Math.abs(stride),
+      2.01-.14*wind+.39*lift+.10*sweep];
+    const m=matrix(-1.02+.24*wind-(alternate?.38:.70)*sweep,
+      -.30-.10*wind+(alternate?-.68:.20)*sweep+.36*equip,
+      .47-.44*wind+(alternate?.62:1.21)*sweep-.40*equip);
+    const wrist=rotate(knifeWrist,m);
+    const delta=[.86-.19*sweep,-1.70,1.91].map((v,i)=>v-pos[i]-wrist[i]);
+    const aim=[0,1,2].map(i=>m[i]*delta[0]+m[i+3]*delta[1]+m[i+6]*delta[2]);
+    const v=unit(aim),[x,y,z]=cross(armAxis,v),c=dot(armAxis,v),k=1/Math.max(.00001,1+c);
+    const forearm=[c+x*x*k,x*y*k-z,x*z*k+y,y*x*k+z,c+y*y*k,y*z*k-x,z*x*k-y,z*y*k+x,c+z*z*k];
+    const stretch=Math.hypot(...aim)/Math.hypot(...knifeArm)-1;
+    for(let i=0;i<9;i++)forearm[i]+=v[Math.floor(i/3)]*stretch*armAxis[i%3];
+    return {m,pos,forearm};
+  }
   function draw(canvas,s){
     if(!canvas||!s)return;
     const target=surface(canvas), {ctx,w,h}=target;
     const gpu=accelerator(canvas);
     if(!s.hp || w<2||h<2){gpu?.clear();return;}
-    const model=models[s.weapon]||models[0], t=s.time||0,a=clamp(s.aim||0,0,1), hip=1-a;
+    const model=models[s.weapon]||models[0],t=s.time||0;
+    const key=lightInView(s.yaw||0,s.pitch||0),f=h*.88,exposure=window.Arena?.viewExposure??1;
+    if(model.index===2){
+      const {m,pos,forearm}=knifePose(s),pose={...atRest,forearm};
+      if(gpu)gpu.draw(model,m,pos,f,w,h,pose,0,key,exposure);
+      else render(model,{...target,m,pos,f,cx:w*.5,cy:h*.5,preview:false,pose,key,exposure});
+      activeModels.delete(canvas);
+      return;
+    }
+    const a=clamp(s.aim||0,0,1),hip=1-a;
     const pose=reloadPose(s.reload,model.index,s.reloadEmpty);
     const rw=pose.lift, rc=clamp(s.recoil||0,-.23,1.5),side=clamp(s.recoilSide||0,-1,1),sw=s.switchProgress||0;
     const bob=s.moving?Math.sin(s.bob||0):0, breathe=Math.sin(t*2.14)*.005;
@@ -1143,22 +1209,20 @@ public static class GreyportLobby_60798d1df775
     mem.time=t;
     const pos=[mix(.70,0,a)+(.025*bob+breathe)*hip-.23*rw+side*.047,
       mix(-.64,-model.eye,a)+(.016*Math.abs(bob)+breathe)*hip-.18*sw+.24*rw+.045*pose.seat,
-      mix(model.index===2?1.83:2.37,model.index===2?1.3:2.14,a)-rc*(.18-.045*a)+.12*rw];
+      mix(model.index===1?1.83:2.37,model.index===1?1.3:2.14,a)-rc*(.18-.045*a)+.12*rw];
     const m=matrix(-.115*hip-.34*rw+side*.057,-.095*hip-rc*(.112-.032*a)+.24*sw-.07*rw+.06*pose.finish,
       .082*hip-.78*rw-.21*sw+side*.064-.041*pose.seat);
-    const slide=Math.max(s.flash||0,pose.finish*.8)*(model.index===2?.19:.075);
-    const key=lightInView(s.yaw||0,s.pitch||0),f=h*.88;
-    const exposure=window.Arena?.viewExposure??1;
+    const slide=Math.max(s.flash||0,pose.finish*.8)*(model.index===1?.19:.075);
     const projected=gpu?gpu.draw(model,m,pos,f,w,h,pose,slide,key,exposure):
       render(model,{...target,m,pos,f,cx:w*.5,cy:h*.5,preview:false,pose,slide,key,exposure});
-    if(a>.72&&model.index!==2){
+    if(a>.72&&model.index===0){
       const x=w*.5,y=h*.5,r=Math.max(1,h*.00145);
       ctx.fillStyle='rgba(126,238,205,'+((a-.72)/.28)+')';
       ctx.beginPath();ctx.arc(x,y,r,0,TAU);ctx.fill();
     }
     if(s.flash>0){
-      const tip=projected([0,model.index===2?.12:.055,model.tip+.07]);
-      flash(ctx,tip[0],tip[1],h*(model.index===2?.042:.061)*(.72+s.flash*.48),s.shotSerial||0,s.flash);
+      const tip=projected([0,model.index===1?.12:.055,model.tip+.07]);
+      flash(ctx,tip[0],tip[1],h*(model.index===1?.042:.061)*(.72+s.flash*.48),s.shotSerial||0,s.flash);
     }
     if(s.shotSerial!=null&&s.shotSerial!==mem.shot){
       const p=projected([.20,.13,-.11]);mem.shot=s.shotSerial;
@@ -2503,6 +2567,25 @@ function buildOperatorGun(b,look,index) {
     for(let i=0;i<rim.length;i++){const j=(i+1)%rim.length;b.patch([left[i],left[j],right[j],right[i]],col,material)}
   }
   if(index===2){
+    const steel=[.54,.60,.60],bevel=[.82,.86,.85],spine=[.34,.42,.44],amber=[.84,.55,.20];
+    b.beam([0,-.069,0],[0,.042,-.014],.018,grip,13,8);
+    b.box(0,.045,-.014,.043,.013,.063,alloy,13);
+    b.box(0,.053,-.014,.033,.005,.048,amber,13);
+    b.box(0,-.070,0,.041,.013,.045,alloy,13);
+    b.box(0,-.066,0,.042,.004,.043,amber,13);
+    const rows=[[.054,.004,-.034,.007],[.073,.008,-.048,.007],[.178,.012,-.059,.006],[.210,.006,-.058,.004]];
+    for(const s of [-1,1]){
+      const sections=rows.map(([y,back,front,x])=>[
+        [s*.001,y,back],[s*x,y,back+(front-back)*.29],[s*x*.82,y,back+(front-back)*.69],[0,y,front]]);
+      for(let j=1;j<sections.length;j++)for(let k=0;k<3;k++){
+        b.patch([sections[j-1][k],sections[j][k],sections[j][k+1],sections[j-1][k+1]],[steel,spine,bevel][k],13);
+      }
+      const last=sections.at(-1);
+      for(let k=0;k<3;k++)b.patch([last[k],[0,.265,-.048],last[k+1]],[steel,spine,bevel][k],13);
+    }
+    return;
+  }
+  if(index===1){
     profile([[.057,.048],[.047,.088],[-.161,.088],[-.178,.078],[-.176,.054],[-.145,.044]],.029,metal);
     profile([[.054,.049],[.043,.059],[-.159,.057],[-.157,.030],[-.057,.028],[-.009,.040]],.028,grip);
     profile([[.036,.048],[-.003,.044],[-.014,.032],[.004,-.065],[.045,-.072],[.052,-.054]],.032,molded);
@@ -2516,21 +2599,19 @@ function buildOperatorGun(b,look,index) {
     for(let i=0;i<4;i++)b.box(0,.070,.014+i*.008,.030,.019,.0025,dark,13);
     return;
   }
-  const rifle=index===0;
   profile([[.064,.091],[-.146,.091],[-.157,.080],[-.152,.043],[-.110,.023],[-.023,.020],[.060,.042]],.046,alloy);
   profile([[.039,.047],[-.005,.034],[.004,-.056],[.040,-.067],[.050,-.055]],.034,grip);
-  profile(rifle?[[-.049,.025],[-.097,.027],[-.111,-.059],[-.117,-.092],[-.075,-.102],[-.055,-.064]]:
-    [[-.055,.031],[-.090,.030],[-.100,-.098],[-.066,-.099]],.036,metal,13.25);
-  const last=rifle?.388:.288;
-  profile([[-.143,.089],[-last+.022,.089],[-last,.072],[-last,.050],[-last+.012,.030],[-.143,.030]],rifle?.048:.043,molded);
-  for(let i=0;i<(rifle?6:4);i++)for(const side of [-1,1]){
-    b.box(side*(rifle?.024:.022),.066,-.168-i*.030,.0025,.011,.016,dark,13);
+  profile([[-.049,.025],[-.097,.027],[-.111,-.059],[-.117,-.092],[-.075,-.102],[-.055,-.064]],.036,metal,13.25);
+  const last=.388;
+  profile([[-.143,.089],[-last+.022,.089],[-last,.072],[-last,.050],[-last+.012,.030],[-.143,.030]],.048,molded);
+  for(let i=0;i<6;i++)for(const side of [-1,1]){
+    b.box(side*.024,.066,-.168-i*.030,.0025,.011,.016,dark,13);
   }
   b.box(0,.095,-last/2+.026,.033,.009,last+.038,metal,13);
-  const tip=rifle?.59:.425;
+  const tip=.59;
   b.beam([0,.075,-last],[0,.075,-tip+.045],.012,metal,13,10);
   b.beam([0,.075,-tip+.056],[0,.075,-tip],.018,dark,13,10);
-  const rear=rifle?.225:.160;
+  const rear=.225;
   b.beam([0,.071,.056],[0,.071,rear-.045],.020,dark,13,8);
   profile([[.081,.090],[rear-.010,.084],[rear,.072],[rear,.000],[rear-.022,-.006],[.095,.045]],.044,molded);
   b.box(0,.040,rear,.047,.094,.009,grip,13);
@@ -2552,7 +2633,7 @@ function buildOperatorGun(b,look,index) {
   const updateOperatorPose = (() => {
     const origin = [0,0,0], hips = [0,.91,0], chest = [0,.96,0], neck = [0,1.49,0];
     const gripOffset = [0,-.012,-.035];
-    const support = [[0,.04,-.26], [0,.038,-.19], [-.035,-.01,-.045]];
+    const support = [[0,.04,-.26],[-.035,-.01,-.045]];
     const dot3 = (a,b) => a[0]*b[0] + a[1]*b[1] + a[2]*b[2];
     const sub3 = (a,b) => [a[0]-b[0],a[1]-b[1],a[2]-b[2]];
     const add3 = (a,b) => [a[0]+b[0],a[1]+b[1],a[2]+b[2]];
@@ -2651,21 +2732,26 @@ function buildOperatorGun(b,look,index) {
     return function updateOperatorPose(a,time,motion,out) {
       const phase=motion.phase||0, stride=clamp(motion.stride||0,0,1);
       const forward=clamp(motion.forward||0,-1,1), side=clamp(motion.side||0,-1,1);
-      const kick=clamp(motion.kick||0,0,1), air=clamp(motion.air||0,0,1);
-      const reload=motion.reload??-1, lower=ease(0,.22,reload)*(1-ease(.75,1,reload));
+      const weapon=clamp(a.weapon|0,0,2),pistol=weapon===1,knife=weapon===2;
+      const kick=knife?0:clamp(motion.kick||0,0,1), air=clamp(motion.air||0,0,1);
+      const reload=knife?-1:(motion.reload??-1),lower=ease(0,.22,reload)*(1-ease(.75,1,reload));
       const age=a.alive===false?Math.max(0,a.deathAge||0):0;
       if(age>.29&&!motion.rest)motion.rest=groundedPose(motion);
       const buckle=ease(0,.37,age),release=ease(.10,.54,age);
       const seed=motion.seed||0, breath=Math.sin(time*2.05+seed*.83);
       const walk=Math.sin(phase), bounce=Math.cos(2*phase), aim=clamp(a.pitch||0,-1.12,1.06);
-      const weapon=clamp(a.weapon|0,0,2), pistol=weapon===2;
+      const swing=knife&&a.alive!==false?(a.swingProgress??-1):-1;
+      const wind=ease(0,.11,swing)*(1-ease(.11,.25,swing));
+      const sweep=ease(.105,.39,swing)*(1-ease(.47,1,swing));
+      const lift=ease(.10,.24,swing)*(1-ease(.24,.49,swing));
+      const highSwing=(a.swingSerial||0)%2===0;
 
       const pelvis=[.016+walk*.025*stride, .866+(.013*bounce-.007)*stride+.002*breath-.027*air-.19*buckle,
                     .026+.011*stride];
       place(out,0,angles(-.045,-.06+walk*.077*stride,.021*walk*stride),hips,pelvis);
       const spine=point(out,0,chest);
       const lean=-.094-.065*stride*Math.max(0,forward)+aim*.105-.19*buckle-.045*kick;
-      place(out,1,angles(lean,(pistol?-.085:-.155)-walk*.049*stride,
+      place(out,1,angles(lean,(pistol?-.085:-.155)-walk*.049*stride+.31*sweep-.12*wind,
                          .013-.035*side*stride-.017*walk*stride),chest,spine);
       const throat=point(out,1,neck);
       throat[0]+=.018; throat[2]-=.016;
@@ -2688,14 +2774,17 @@ function buildOperatorGun(b,look,index) {
 
       const seat=ease(.66,.72,reload)*(1-ease(.72,.8,reload));
       const close=(a.reloadEmpty?1:.25)*ease(.76,.84,reload)*(1-ease(.84,.95,reload));
-      const gunPitch=aim-.045-stride*.045+kick*.155+lower*.32-.075*seat-.08*close;
-      const gunRot=angles(gunPitch, .025+lower*.40, -.045-lower*.65);
+      const gunPitch=knife?aim*.41-.58+.27*wind-.49*sweep:aim-.045-stride*.045+kick*.155+lower*.32-.075*seat-.08*close;
+      const gunRot=knife?angles(gunPitch,-.13+.56*wind-.75*sweep,.27-.35*wind+(highSwing?.67:1.2)*sweep):
+        angles(gunPitch,.025+lower*.40,-.045-lower*.65);
       const shoulder=point(out,1,sides[1].shoulder);
-      const grip=add3(shoulder,rotate(angles(aim*.83,0,0),
+      const grip=knife?add3(shoulder,[.038+.09*wind-.41*sweep,-.19+.13*lift+(highSwing?.065:-.055)*sweep,-.21+.10*wind-.14*lift]):
+        add3(shoulder,rotate(angles(aim*.83,0,0),
         [pistol?-.158:-.115, -.088+.006*breath-.020*stride-lower*.095,
          (pistol?-.29:-.193)+kick*.060+lower*.027]));
       place(out,15,gunRot,origin,grip);
-      const supportPalm=add3(grip,rotate(gunRot,support[weapon]));
+      const supportPalm=knife?point(out,1,[-.27-.043*sweep,1.23+.05*wind,-.24+.07*sweep]):
+        add3(grip,rotate(gunRot,support[weapon]));
       const pocketReach=ease(.23,.44,reload)*(1-ease(.48,.71,reload));
       const magTouch=ease(.075,.235,reload)*(1-ease(.73,.90,reload));
       const offset=motion.magShift;
@@ -2705,7 +2794,7 @@ function buildOperatorGun(b,look,index) {
       for(const arm of sides) {
         const left=arm.s<0;
         const handRot=left
-          ? angles(gunPitch-.08-pocketReach*.64,.08+lower*.27,-.18-lower*.27)
+          ? knife?angles(-.30,.19,-.21):angles(gunPitch-.08-pocketReach*.64,.08+lower*.27,-.18-lower*.27)
           : gunRot;
         const rest=point(out,1,[arm.s*(left?.36:.29),left?1.03:.98,left?-.06:.10]);
         const palm=release?mix3(left?leftPalm:grip,rest,release):left?leftPalm:grip;
@@ -2917,14 +3006,14 @@ function buildOperatorGun(b,look,index) {
     for(let i=0;i<3;i++){
       const builder=operatorBuilder();buildOperatorGun(builder,operatorLooks[0],i);firearmBuffers.push(builder.upload());
     }
-    const muzzleEnds=[-.59,-.425,-.184];
-    for(let i=0;i<3;i++){
+    const muzzleEnds=[-.59,-.184];
+    for(let i=0;i<muzzleEnds.length;i++){
       const builder=operatorBuilder(),z=muzzleEnds[i],flare=c('ffe078');
       builder.bone('gun');
       for(let j=0;j<5;j++){
         const a=j*Math.PI*.4,r=.039+.011*(j%2),y=.074;
         const edge=[r*Math.cos(a),y+r*Math.sin(a),z-.027];
-        builder.patch([[0,y,z],edge,[0,y,z-(i===2?.106:.177)]],flare,15);
+        builder.patch([[0,y,z],edge,[0,y,z-(i===1?.106:.177)]],flare,15);
       }
       firearmBuffers.push(builder.upload());
     }
@@ -3063,7 +3152,7 @@ function buildOperatorGun(b,look,index) {
         gl.uniform4fv(p['bones[0]'],m.bones);gl.uniform1f(p.style,m.style);
         if(shadow)gl.uniform1f(p.floorY,0.);
         drawPart((shadow||distant?distantCharacters:characterBuffers)[m.style]);drawPart(firearmBuffers[weapon]);
-        if(!shadow && a.alive!==false&&a.flash)drawPart(firearmBuffers[weapon+3]);
+        if(!shadow && a.alive!==false&&weapon<2&&a.flash)drawPart(firearmBuffers[weapon+3]);
       }
     }
     if(operatorStencil){
@@ -3157,7 +3246,7 @@ function buildOperatorGun(b,look,index) {
     // Pass a file URI so Windows can resolve drive letters, UNC paths and escaped characters.
     // PowerShell string delimiters are escaped even when the browser leaves them in a URL.
     const fileUri = source.href.replace(/'/g, '%27');
-    const typeName = 'GreyportLobby_60798d1df775';
+    const typeName = 'GreyportLobby_985471761739';
     const dataBlock = '(?s)<' + 'script id="greyport-lobby" type="text/plain">(.*?)<' + '/script>';
     return [
       "$greyportHtml=[IO.File]::ReadAllText(([uri]'" + fileUri + "').LocalPath)",
@@ -3208,7 +3297,7 @@ function buildOperatorGun(b,look,index) {
     try {
       const r=await fetch(origin+'/api/identity',{signal:abort.signal,credentials:'omit',cache:'no-store',redirect:'error'});
       const info=r.ok?await r.json():null;
-      return info?.game==='greyport-arena'&&info.directPlay===2?origin:'';
+      return info?.game==='greyport-arena'&&info.directPlay===3?origin:'';
     } catch { return ''; }
     finally { clearTimeout(timeout); }
   }
@@ -3432,14 +3521,15 @@ function buildOperatorGun(b,look,index) {
 
   const guns = [
     {name:'AR-24',cap:30,reserve:120,damage:27,delay:.105,semiDelay:.155,load:1.55,emptyLoad:1.92,spread:.009,kick:21},
-    {name:'VX-9',cap:36,reserve:144,damage:19,delay:.080,semiDelay:.135,load:1.32,emptyLoad:1.66,spread:.016,kick:16},
-    {name:'P-12',cap:12,reserve:60,damage:34,delay:.205,semiDelay:.205,load:1.04,emptyLoad:1.30,spread:.007,kick:24}
+    {name:'P-12',cap:12,reserve:60,damage:34,delay:.205,semiDelay:.205,load:1.04,emptyLoad:1.30,spread:.007,kick:24},
+    {name:'战术刀',melee:true,cap:0,reserve:0,damage:55,range:1.8,delay:.55,duration:.42,contact:.10}
   ];
   const respawnSeconds = 15;
   const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
   const now = () => performance.now() / 1000;
   const radius = .34, eyes = 1.54, duration = 300;
   const keys = new Set();
+  const wheelGesture={at:-1,direction:0,pixels:0,switched:false};
   let round = null, self = null, players = new Map(), effects = [], listeners = [];
   let phase = 'menu', canvas, overlay, ready = false, frame = 0, ticker = 0;
   let lastDraw = 0, lastTick = 0, lastHUD = 0, nextSync = 0, nextHello = 0;
@@ -3468,6 +3558,7 @@ function buildOperatorGun(b,look,index) {
   }
   function clearInput() {
     keys.clear();
+    wheelGesture.at=-1;
     if (self?.triggerHeld) setTrigger(self,false);
     if (self) self.pressUntil=-1;
     fireHeld = aimHeld = jumpPressed = false;
@@ -3501,17 +3592,17 @@ function buildOperatorGun(b,look,index) {
   function blast(weapon, volume) {
     if (muted || !audio || audio.state !== 'running') return;
     const src = audio.createBufferSource(), filter = audio.createBiquadFilter(), gain = audio.createGain();
-    const t = audio.currentTime, tail = [.13, .085, .105][weapon];
+    const t = audio.currentTime, tail = [.13, .105][weapon];
     src.buffer = noise;
     filter.type = 'lowpass';
-    filter.frequency.setValueAtTime([6200, 7700, 5200][weapon], t);
+    filter.frequency.setValueAtTime([6200, 5200][weapon], t);
     filter.frequency.exponentialRampToValueAtTime(440, t + tail);
     gain.gain.setValueAtTime(.24 * volume, t);
     gain.gain.exponentialRampToValueAtTime(.0001, t + tail);
     src.connect(filter).connect(gain).connect(audio.destination);
     src.start(t,Math.random()*.09); src.stop(t + tail);
-    tone([170, 230, 150][weapon], 40, tail * .9, .19 * volume);
-    surfaceNoise([2200,3000,1700][weapon],.032,.09*volume,.016);
+    tone([170,150][weapon], 40, tail * .9, .19 * volume);
+    surfaceNoise([2200,1700][weapon],.032,.09*volume,.016);
   }
   function surfaceNoise(hz, seconds, volume, delay=0) {
     if (muted || !audio || audio.state !== 'running') return;
@@ -3540,10 +3631,11 @@ function buildOperatorGun(b,look,index) {
     return {
       id, name: String(name || 'PLAYER').slice(0, 20),
       x: 0, z: 0, feet: 0, vy: 0, yaw: 0, pitch: 0, grounded: true,
-      weapon: 0, mags: guns.map(g => g.cap), stock: guns.map(g => g.reserve),
+      weapon: 0, previousWeapon:1, mags: guns.map(g => g.cap), stock: guns.map(g => g.reserve),
       hp: 100, kills: 0, deaths: 0, respawnAt: 0, safeUntil: 0, nextShot: 0,
       reloadAt:0,reloadEmpty:false,reloadCue:-1,flashUntil:0,
-      modes:['auto','auto','semi'],triggerHeld:false,pressUntil:-1,lastShotAt:-10,shotsFired:0,chain:0,
+      modes:['auto','semi','melee'],triggerHeld:false,pressUntil:-1,lastShotAt:-10,shotsFired:0,chain:0,
+      lastSwingAt:-10,swings:0,pendingSwing:null,
       kickUp:0,kickUpSpeed:0,kickSide:0,kickSideSpeed:0,kickTime:0,deathYaw:0,deathFloor:0,
       poses:[], poseAt:null, spawnNo:0
     };
@@ -3560,6 +3652,8 @@ function buildOperatorGun(b,look,index) {
     p.yaw = s.yaw ?? (first ? -.55 : Math.atan2(-p.x, p.z));
     p.pitch = 0; p.hp = 100; p.respawnAt = p.reloadAt = 0; p.spawnNo++;
     p.poses.length=0;p.poseAt=null;
+    p.pendingSwing=null; p.lastSwingAt=-10; p.swings=0;
+    if (p.spawnNo===1 || p.previousWeapon===p.weapon) p.previousWeapon=p.weapon===0?1:0;
     rememberPose(p,round.time);
     p.reloadCue=-1; p.reloadEmpty=false; p.triggerHeld=false; p.pressUntil=-1; p.lastShotAt=-10; p.shotsFired=0;
     resetKick(p);
@@ -3716,14 +3810,24 @@ function buildOperatorGun(b,look,index) {
         refreshVitals();
       }
     }
-    if (e.kind === 'shot') {
+    if (e.kind === 'swing') {
+      const actor=players.get(e.source);
+      if (actor && actor!==self && actor.spawnNo===e.spawn && e.serial>=actor.swings) {
+        actor.swings=e.serial; actor.lastSwingAt=e.at;
+        surfaceNoise(1300,.12,.12/(1+Math.hypot(actor.x-self.x,actor.z-self.z)*.22));
+      }
+    }
+    if (e.kind === 'shot' || e.kind === 'slash') {
       const shooter = players.get(e.source);
       if (!shooter) return;
-      shooter.flashUntil = Math.max(round.time,e.at) + .075;
-      if (shooter !== self) {
-        shooter.lastShotAt=e.at; shooter.shotsFired=e.serial;
-        const distance = Math.hypot(shooter.x-self.x, shooter.z-self.z);
-        blast(shooter.weapon, .48 / (1 + distance*.12));
+      if (e.kind === 'shot') {
+        shooter.flashUntil = Math.max(round.time,e.at) + .075;
+        if (shooter !== self) {
+          shooter.lastShotAt=e.at; shooter.shotsFired=e.serial;
+          const distance = Math.hypot(shooter.x-self.x, shooter.z-self.z);
+          const weapon=e.weapon??shooter.weapon;
+          if (guns[weapon] && !guns[weapon].melee) blast(weapon, .48 / (1 + distance*.12));
+        }
       }
       if (e.victim === self.id) { hurt = .38; tone(95, 48, .11, .11); }
       if (e.victim && shooter === self) { hit = .19; tone(900, 650, .045, .065); }
@@ -3735,6 +3839,10 @@ function buildOperatorGun(b,look,index) {
           name:struck.name, hp:e.hpAfter, protected:Boolean(e.protectedId), until:now()+1.15
         };
         if (struck === self || shooter === self) refreshVitals();
+      }
+      if (e.kind==='slash') {
+        if (e.impact && (shooter===self || struck===self)) surfaceNoise(struck?370:1900,.055,.17);
+        return;
       }
       const [x,y,z] = e.to;
       effects.push({x,y,z,ax:e.from[0],ay:e.from[1],az:e.from[2],type:'trace',life:.075});
@@ -3765,7 +3873,7 @@ function buildOperatorGun(b,look,index) {
   }
   function beginReload(p, notifyHost=true) {
     const i = p.weapon;
-    if (p.hp <= 0 || p.reloadAt || p.mags[i] >= guns[i].cap || !p.stock[i]) return;
+    if (guns[i].melee || p.hp <= 0 || p.reloadAt || p.mags[i] >= guns[i].cap || !p.stock[i]) return;
     p.reloadEmpty=p.mags[i]===0; p.reloadCue=-1; p.pressUntil=-1;
     p.reloadAt=round.time+(p.reloadEmpty?guns[i].emptyLoad:guns[i].load);
     reloadCues(p,0);
@@ -3777,17 +3885,19 @@ function buildOperatorGun(b,look,index) {
   function changeWeapon(p, i) {
     if (!Number.isInteger(i) || !guns[i] || p.weapon === i || p.hp <= 0) return;
     if (p.triggerHeld) setTrigger(p,false);
-    p.weapon = i; p.reloadAt = 0; p.reloadEmpty=false; p.reloadCue=-1; p.pressUntil=-1;
+    p.previousWeapon=p.weapon; p.weapon=i; p.reloadAt=0; p.reloadEmpty=false; p.reloadCue=-1; p.pressUntil=-1;
+    p.pendingSwing=null; p.lastSwingAt=-10; p.flashUntil=0;
     p.nextShot = Math.max(p.nextShot, round.time + .22);
     resetKick(p);
     if (p === self) {
-      muzzle = 0; fireHeld=false; switchedAt = round.time;
+      muzzle = 0; fireHeld=false; aimHeld=false; aim=0; switchedAt = round.time;
       tone(420, 140, .06, .038, 'triangle');
       if (!authority()) send({t:'weapon',i,seq:++clientShot,spawn:p.spawnNo}, window.LAN.hostId);
+      ui('hud',viewState());
     }
   }
   function changeFireMode(p,mode) {
-    if (p.weapon===2 || !['semi','auto'].includes(mode) || p.modes[p.weapon]===mode || !p.hp) return;
+    if (p.weapon!==0 || !['semi','auto'].includes(mode) || p.modes[p.weapon]===mode || !p.hp) return;
     if (p.triggerHeld) setTrigger(p,false);
     p.pressUntil=-1; p.modes[p.weapon]=mode;
     if (p===self) {
@@ -3826,7 +3936,26 @@ function buildOperatorGun(b,look,index) {
     const pressed=p.pressUntil>=time,auto=p.modes[p.weapon]==='auto';
     if (!(pressed || (p.triggerHeld && auto)) || p.hp<=0 || p.reloadAt || time+.00001<p.nextShot || round.ended) return;
     p.pressUntil=-1;
-    discharge(p,time,auto&&!pressed);
+    if (guns[p.weapon].melee) beginSwing(p,time);
+    else discharge(p,time,auto&&!pressed);
+  }
+  function attackViewTime(p) {
+    return p===self ? localShotTime() : round.time-(p.sightDelay??interpolationDelay);
+  }
+  function beginSwing(p,time) {
+    const knife=guns[p.weapon];
+    p.lastSwingAt=time; p.nextShot=time+knife.delay; p.swings++; p.safeUntil=0;
+    if (p===self) surfaceNoise(1300,.12,.20);
+    if (!authority()) return;
+    p.pendingSwing={at:time+knife.contact,origin:[p.x,p.feet+eyes+eyeBob(p),p.z],
+      yaw:p.yaw,pitch:p.pitch,seenAt:attackViewTime(p)};
+    echo({kind:'swing',source:p.id,spawn:p.spawnNo,at:time,serial:p.swings});
+  }
+  function swingProgress(p,time) {
+    const knife=guns[p.weapon];
+    if (!knife.melee || p.hp<=0 || p.swings===0) return -1;
+    const progress=(time-p.lastSwingAt)/knife.duration;
+    return progress<1 ? Math.max(0,progress) : -1;
   }
   function discharge(p,time,held) {
     const i = p.weapon, gun = guns[i];
@@ -3852,12 +3981,28 @@ function buildOperatorGun(b,look,index) {
     const jitter=gun.spread*(ads ? .33 : 1)*Math.min(1,p.chain/3);
     const yaw=p.yaw+yawKick+(Math.random()-.5)*jitter*2;
     const pitch=p.pitch+pitchKick+(Math.random()-.5)*jitter*2;
+    const origin=[p.x,p.feet+eyes+eyeBob(p),p.z];
+    resolveImpact(p,time,traceAttack(p,origin,yaw,pitch,80,attackViewTime(p)));
+  }
+  function finishSwing(p,time) {
+    const swing=p.pendingSwing;
+    if (!swing || time<swing.at) return;
+    p.pendingSwing=null;
+    // Each part of the short arc has its own wall test. Pick one contact for the entire swing.
+    const range=guns[p.weapon].range;
+    let contact=traceAttack(p,swing.origin,swing.yaw,swing.pitch,range,swing.seenAt);
+    for (const offset of [-.15,.15,-.30,.30]) {
+      const next=traceAttack(p,swing.origin,swing.yaw+offset,swing.pitch,range,swing.seenAt);
+      if (next.victim && (!contact.victim || next.distance<contact.distance)) contact=next;
+      else if (!contact.victim && next.distance<contact.distance) contact=next;
+    }
+    resolveImpact(p,time,contact);
+  }
+  function traceAttack(p,o,yaw,pitch,range,seenAt) {
     const cp = Math.cos(pitch), d = [Math.sin(yaw)*cp,Math.sin(pitch),-Math.cos(yaw)*cp];
-    const o = [p.x,p.feet+eyes+eyeBob(p),p.z];
-    const surface = {}, barrier = wallDistance(o, d, 80, surface);
+    const surface = {}, barrier = wallDistance(o, d, range, surface);
     // Use the same history as the remote actor renderer. The shooter reports the
     // host-clock instant it was displaying, never a victim or a damage value.
-    const seenAt=p===self ? localShotTime() : round.time-(p.sightDelay??interpolationDelay);
     let distance = barrier, victim = null, critical = false;
     for (const target of players.values()) {
       if (target === p || target.hp <= 0) continue;
@@ -3866,21 +4011,27 @@ function buildOperatorGun(b,look,index) {
         distance=impact.distance; victim=target; critical=impact.critical;
       }
     }
+    return {o,d,yaw,distance,range,victim,critical,wall:surface.wall};
+  }
+  function resolveImpact(p,time,{o,d,yaw,distance,range,victim,critical,wall}) {
+    const gun=guns[p.weapon], melee=!!gun.melee;
     const damaged = victim && victim.safeUntil <= round.time;
     if (damaged) {
-      const damage = Math.round(gun.damage * (critical ? 1.7 : 1));
+      const damage = Math.round(gun.damage * (critical && !melee ? 1.7 : 1));
       victim.hp = Math.max(0,victim.hp-damage);
     }
     const from = [o[0]+d[0]*.45+Math.cos(yaw)*.13,o[1]-.13,o[2]+d[2]*.45+Math.sin(yaw)*.13];
     const to=o.map((v,j)=>v+d[j]*distance);
-    echo({kind:'shot',at:time,serial:p.shotsFired,source:p.id,victim:damaged ? victim.id : null,from,to,
+    echo({kind:melee?'slash':'shot',weapon:p.weapon,at:time,serial:melee?p.swings:p.shotsFired,
+      source:p.id,victim:damaged ? victim.id : null,from,to,
       protectedId:victim && !damaged ? victim.id : null,victimSpawn:victim?.spawnNo,hpAfter:victim?.hp,
-      impact:distance<80,normal:!victim && distance<80 ? impactNormal(to,surface.wall) : null});
+      impact:distance<range,normal:!melee && !victim && distance<range ? impactNormal(to,wall) : null});
     if (damaged && !victim.hp) {
       const deathTime = round.time + Math.max(0, now() - lastTick);
       p.kills++; victim.deaths++; victim.respawnAt = deathTime + respawnSeconds; victim.reloadAt = 0;
       victim.deathYaw=Math.atan2(d[0],-d[2]);
       victim.deathFloor=floorBelow(victim);
+      victim.pendingSwing=null;
       echo({kind:'frag',source:p.id,killer:p.name,victim:victim.name,target:victim.id,
         at:deathTime,yaw:victim.deathYaw,spawn:victim.spawnNo,x:victim.x,z:victim.z,feet:victim.feet,floor:victim.deathFloor});
     }
@@ -3940,6 +4091,7 @@ function buildOperatorGun(b,look,index) {
       mt:p.poses.length?p.poses[p.poses.length-1].stamp:round.time,
       hp:p.hp,k:p.kills,d:p.deaths,spawn:p.spawnNo,safe:p.safeUntil,resp:p.respawnAt,
       reload:p.reloadAt,empty:p.reloadEmpty,modes:p.modes,shot:p.lastShotAt,serial:p.shotsFired,
+      swing:p.lastSwingAt,swings:p.swings,
       fall:p.deathYaw,floor:p.deathFloor,ammo:p.mags,stock:p.stock,ack:p.ack||0};
   }
   function snapshot(to) {
@@ -3974,6 +4126,7 @@ function buildOperatorGun(b,look,index) {
         } else if (!p.triggerHeld) p.shotsFired=a.serial;
         p.reloadEmpty=a.empty; p.modes=a.modes.slice();
       }
+      if (fresh || p!==self) {p.lastSwingAt=a.swing??-10;p.swings=a.swings??0;}
       if (p!==self) {
         p.x=a.x;p.z=a.z;p.feet=a.f;p.yaw=a.a;p.pitch=a.b;
         if(fresh || !p.hp)p.poses.length=0;
@@ -4100,6 +4253,7 @@ function buildOperatorGun(b,look,index) {
           if (p===self) tone(340,560,.045,.027,'triangle');
         }
       }
+      if (p.pendingSwing) finishSwing(p,round.time);
       if ((p===self && phase==='playing' && clientReady) || (authority() && p!==self)) serviceTrigger(p,round.time);
     }
     checkLife();
@@ -4124,7 +4278,8 @@ function buildOperatorGun(b,look,index) {
       const age=p.hp>0?-1:Math.max(0,time-p.respawnAt+respawnSeconds);
       const pose=p.hp>0?visiblePoseAt(p,displayTime):p;
       return {id:p.id,name:p.name,x:pose.x,y:p.hp>0?pose.feet:actorFeet(p,age),z:pose.z,yaw:pose.yaw,pitch:pose.pitch,team:'enemy',alive:p.hp>0,
-        flash:p.hp>0 && p.flashUntil>time,hp:p.hp,weapon:p.weapon,spawnNo:p.spawnNo,fireMode:p.modes[p.weapon],
+        flash:p.hp>0 && !guns[p.weapon].melee && p.flashUntil>time,hp:p.hp,weapon:p.weapon,spawnNo:p.spawnNo,fireMode:p.modes[p.weapon],
+        swingProgress:swingProgress(p,time),swingSerial:p.swings,
         reload:reloadProgress(p,time),reloadEmpty:p.reloadEmpty,shotSerial:p.shotsFired,shotAge:Math.max(0,time-p.lastShotAt),
         deathAge:age,deathYaw:p.deathYaw};
     });
@@ -4135,7 +4290,8 @@ function buildOperatorGun(b,look,index) {
       invulnerable:self.safeUntil>time,time,recoil:clamp(self.kickUp,0,1.5),recoilSide:clamp(self.kickSide,-1,1),
       flash:muzzle>0?muzzle/.065:0,hit,hurt,aim,killConfirm:clamp(killConfirm/.48,0,1),deathAge,
       targetFeedback:currentTarget(),
-      fireMode:self.modes[self.weapon],canToggleFireMode:self.weapon!==2,reloadEmpty:self.reloadEmpty,
+      fireMode:self.modes[self.weapon],canToggleFireMode:self.weapon===0,reloadEmpty:self.reloadEmpty,
+      melee:!!g.melee,swingProgress:swingProgress(self,time),swingSerial:self.swings,
       reloadStage:reload<0?'':reload<.47?'取匣':reload<.86?'装匣':'就绪',
       bob,moving:walking,sprinting:running,reload,shotSerial,switchProgress:clamp(1-(time-switchedAt)/.22,0,1),
       actors,fx:effects.concat(marks),name:self.name,mode:round.mode,map:round.map,phase,controlsEngaged,
@@ -4259,9 +4415,10 @@ function buildOperatorGun(b,look,index) {
     if (e.repeat) return;
     if (e.code==='Space') jumpPressed=true;
     if (e.code==='KeyR') beginReload(self);
+    if (e.code==='KeyQ') changeWeapon(self,self.previousWeapon);
     if (e.code==='KeyB') {
-      if (self.weapon===2) ui('notify','这把手枪使用单发模式');
-      else changeFireMode(self,self.modes[self.weapon]==='auto'?'semi':'auto');
+      if (self.weapon===0) changeFireMode(self,self.modes[0]==='auto'?'semi':'auto');
+      else if (self.weapon===1) ui('notify','这把手枪使用单发模式');
     }
     if (/^Digit[123]$/.test(e.code)) changeWeapon(self,Number(e.code.slice(-1))-1);
   });
@@ -4281,7 +4438,7 @@ function buildOperatorGun(b,look,index) {
     // A restricted browser can still use click-and-drag if pointer lock was denied.
     if (!controlsEngaged) { controlsEngaged=true; ui('hud',viewState()); return; }
     if (e.button===0) { fireHeld=true; setTrigger(self,true); }
-    if (e.button===2) { aimHeld=true; e.preventDefault(); }
+    if (e.button===2) { aimHeld=!guns[self.weapon].melee; e.preventDefault(); }
   });
   document.addEventListener('mouseup',e=>{
     if (!e.buttons) drag=null;
@@ -4294,8 +4451,21 @@ function buildOperatorGun(b,look,index) {
     else if (drag) { look(e.clientX-drag.x,e.clientY-drag.y); drag={x:e.clientX,y:e.clientY}; }
   });
   document.addEventListener('wheel',e=>{
-    if (phase!=='playing' || !self || !e.deltaY || document.querySelector('dialog[open]')) return;
-    e.preventDefault(); changeWeapon(self,(self.weapon+(e.deltaY>0 ? 1 : 2))%3);
+    if (phase!=='playing' || !self || !clientReady || !e.deltaY || document.querySelector('dialog[open]')) return;
+    e.preventDefault();
+    const direction=Math.sign(e.deltaY), amount=Math.abs(e.deltaY), time=now();
+    // Browsers deliver wheel notches as lines/pages or coarse pixel multiples.
+    // A trackpad streams many small pixel deltas, including momentum after lift.
+    const notch=e.deltaMode===1 || e.deltaMode===2 || amount%100===0 || amount%120===0;
+    if (!notch) {
+      if (time-wheelGesture.at>.15 || direction!==wheelGesture.direction) {
+        wheelGesture.pixels=0; wheelGesture.switched=false;
+      }
+      wheelGesture.at=time; wheelGesture.direction=direction; wheelGesture.pixels+=amount;
+      if (wheelGesture.pixels<36 || wheelGesture.switched) return;
+      wheelGesture.switched=true;
+    } else wheelGesture.at=-1;
+    changeWeapon(self,(self.weapon+direction+guns.length)%guns.length);
   },{passive:false});
   document.addEventListener('contextmenu',e=>{ if (phase==='playing') e.preventDefault(); });
   document.addEventListener('pointerlockchange',()=>{
@@ -4311,7 +4481,7 @@ function buildOperatorGun(b,look,index) {
   window.addEventListener('blur',loseFocus);
   document.addEventListener('visibilitychange',()=>{ if (document.hidden) loseFocus(); });
   window.Game={start,preview,resume,pause,quit,respawnSeconds,
-    selectWeapon(i){ if (self && phase==='playing') changeWeapon(self,i); },
+    selectWeapon(i){ if (self && clientReady && phase==='playing') changeWeapon(self,i); },
     toggleSound(){ muted=!muted; if (!muted) wakeAudio(); return !muted; },
     setSound(enabled){ muted=!enabled; if (enabled) wakeAudio(); },
     get soundEnabled(){ return !muted; },
@@ -4387,12 +4557,15 @@ function drawMap(canvas, state, radar=false, map=window.Arena?.map){
   'use strict';
   const $=id=>document.getElementById(id);
   const dlg=$('dialog'),body=$('modalBody');
-  const guns=Game.guns,gunTypes=['自动步枪','冲锋枪','半自动手枪'];
+  const guns=Game.guns,gunTypes=['突击步枪','半自动手枪','近战武器'];
+  const slotIds=['rifle','pistol','knife'];
   function stored(key,fallback){try{return localStorage.getItem('greyport.'+key)??fallback}catch{return fallback}}
   function store(key,value){try{localStorage.setItem('greyport.'+key,value)}catch{}}
   const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   function text(id,value){const el=$(id),next=String(value);if(el.textContent!==next)el.textContent=next}
-  let equipped=Math.max(0,Math.min(2,Number(stored('weapon','0'))||0));
+  // Earlier versions saved 2 for the pistol, 1 for the retired SMG, and 0 for the rifle.
+  const savedSlot=stored('loadout',stored('weapon','0')==='2'?'pistol':'rifle');
+  let equipped=Math.max(0,slotIds.indexOf(savedSlot));
   let player=stored('name','')||('玩家'+String(Math.floor(Math.random()*9000)+1000));
   let lastState=null,lastRadar=0,toastTimer=0,previewMap=Arena.maps[0],joining=false;
   let target=LAN.route();
@@ -4408,17 +4581,18 @@ function drawMap(canvas, state, radar=false, map=window.Arena?.map){
   dlg.addEventListener('click',e=>{if(e.target!==dlg)return;const r=dlg.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)closeModal()});
   if(stored('sound','on')==='off')Game.setSound(false);
   function help(){
-    const keys=[['移动','W A S D'],['转动视角','移动鼠标'],['开火','鼠标左键'],['举枪瞄准','按住右键'],['切换武器','1 / 2 / 3 或滚轮'],['单发 / 连发','B'],['换弹','R'],['跳跃','空格'],['疾跑','Shift'],['战斗菜单','Esc']];
-    showModal('help','FIELD MANUAL','操作指南','<div class="keylist">'+keys.map(([a,b])=>'<div>'+a+'<kbd>'+b+'</kbd></div>').join('')+'</div><p style="margin-top:16px">点击战区画面控制视角。步枪和冲锋枪可按 B 切换模式：单发每次点击打一发，连发可按住左键。手枪固定单发。阵亡后 15 秒自动复活。</p>');
+    const keys=[['突击步枪','1'],['手枪','2'],['刀','3'],['上一把武器','Q'],['循环切换武器','鼠标滚轮'],['开火 / 挥刀','鼠标左键'],['举枪瞄准','按住右键'],['步枪单发 / 连发','B'],['换弹','R'],['移动 / 疾跑','WASD / Shift'],['跳跃','空格'],['战斗菜单','Esc']];
+    showModal('help','FIELD MANUAL','操作指南','<div class="keylist">'+keys.map(([a,b])=>'<div>'+a+'<kbd>'+b+'</kbd></div>').join('')+'</div><p style="margin-top:16px">第一次点击画面后，移动鼠标转动视角。手枪每次点击打一发，持刀时每次点击挥一次。阵亡后 15 秒自动复活。</p>');
   }
   function armory(selected){
     const g=guns[selected];
-    const stats=[['弹匣容量',g.cap+' 发'],['基础伤害',g.damage],['射击模式',selected===2?'单发':'单发 / 连发'],
-      ['射速上限',Math.round(60/(selected===2?g.semiDelay:g.delay))+' 发/分'],
+    const stats=g.melee?[['装备键','3'],['基础伤害',g.damage],['攻击距离',g.range+' 米'],['挥击间隔',g.delay+' 秒']]:
+      [['弹匣容量',g.cap+' 发'],['基础伤害',g.damage],['射击模式',selected===0?'单发 / 连发':'单发'],
+      ['射速上限',Math.round(60/(selected===0?g.delay:g.semiDelay))+' 发/分'],
       ['常规换弹',g.load.toFixed(2)+' 秒'],['空匣换弹',g.emptyLoad.toFixed(2)+' 秒']];
     showModal('arm','LOADOUT','武器库','<div class="seg">'+guns.map((w,i)=>'<button data-gun="'+i+'" class="'+(i===selected?'chosen':'')+'">'+w.name+'</button>').join('')+'</div><canvas id="gunPreview"></canvas><div class="gunhead"><strong>'+g.name+'</strong><span>'+gunTypes[selected]+'</span></div><div class="gunstats">'+stats.map(([k,v])=>'<div>'+k+'<b>'+v+'</b></div>').join('')+'</div><div class="rowactions"><button class="bt primary" id="equip">'+(selected===equipped?'已选为出场武器':'设为出场武器')+'</button></div>');
     body.querySelectorAll('[data-gun]').forEach(b=>b.onclick=()=>armory(Number(b.dataset.gun)));
-    $('equip').onclick=()=>{equipped=selected;store('weapon',selected);closeModal();notify('下次入场使用 '+g.name)};
+    $('equip').onclick=()=>{equipped=selected;store('loadout',slotIds[selected]);closeModal();notify('下次入场使用 '+g.name)};
     Weapon.preview($('gunPreview'),selected);
   }
   function refreshPreview(){
@@ -4553,6 +4727,8 @@ function drawMap(canvas, state, radar=false, map=window.Arena?.map){
     $('targetFill').style.transform='scaleX('+target.hp/100+')';
     targetTimer=setTimeout(()=>{health.hidden=true;shownTarget=null;},Math.max(0,target.until*1000-performance.now()));
   }
+  const slotLabels=[...$('weaponSlots').children];
+  let activeSlot=-1;
   function hud(s){
     lastState=s;
     $('fieldHint').hidden=Boolean(s.controlsEngaged);
@@ -4560,7 +4736,13 @@ function drawMap(canvas, state, radar=false, map=window.Arena?.map){
     const secs=Math.max(0,Math.ceil(s.secondsLeft));
     text('timer',String(Math.floor(secs/60)).padStart(2,'0')+':'+String(secs%60).padStart(2,'0'));
     vitals(s.hp,s.kills,s.deaths,s.targetFeedback);
-    text('ammo',s.ammo);text('reserve',s.reserve);text('weapLabel',guns[s.weapon].name);
+    if(activeSlot!==s.weapon){
+      activeSlot=s.weapon;
+      for(let i=0;i<slotLabels.length;i++)slotLabels[i].classList.toggle('equipped',i===activeSlot);
+    }
+    text('weapLabel',guns[s.weapon].name);
+    $('ammoLine').hidden=s.melee;$('knifeAction').hidden=!s.melee;$('fireSetting').hidden=s.melee;
+    if(!s.melee){text('ammo',s.ammo);text('reserve',s.reserve);}
     const automatic=s.fireMode==='auto', reloading=s.reload>=0;
     text('fireModeLabel',automatic?'连发':'单发');
     $('fireSetting').classList.toggle('automatic',automatic);$('fireModeKey').hidden=!s.canToggleFireMode;

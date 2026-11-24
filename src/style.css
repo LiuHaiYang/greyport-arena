@@ -9,6 +9,10 @@ dialog,.matchcard{color:var(--fg);border:1px solid #596056;background:#1d2421;bo
 .mapdesc{margin:13px 0}.legend{font-size:12px!important;margin-top:9px}.legend span{color:#e5aa79}
 .field select{font:inherit;background:#171e1a;border:1px solid #4e584c;color:var(--fg);padding:9px 10px}.field select:focus-visible{outline:2px solid var(--orange);outline-offset:2px}
 .munition{min-width:120px}
+#weaponSlots{display:flex;justify-content:flex-end;gap:8px;margin-top:7px}
+#weaponSlots small{font:11px var(--sans);color:#ced4c9;border-bottom:2px solid transparent;padding-bottom:2px}
+#weaponSlots .equipped{color:#ffd0a0;border-color:var(--orange)}
+#knifeAction{font:600 15px var(--sans);margin:6px 0;color:#efe4d0}
 #fireSetting{display:flex;align-items:center;justify-content:flex-end;gap:6px;margin-top:5px}
 #fireModeLabel{font:600 12px var(--sans);color:#e6e9d9}
 #fireModeKey{font:10px var(--mono);padding:0 4px;border-color:#718071;box-shadow:none;color:#d8dece;background:#29362b}

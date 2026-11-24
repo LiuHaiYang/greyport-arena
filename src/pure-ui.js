@@ -2,12 +2,15 @@
   'use strict';
   const $=id=>document.getElementById(id);
   const dlg=$('dialog'),body=$('modalBody');
-  const guns=Game.guns,gunTypes=['自动步枪','冲锋枪','半自动手枪'];
+  const guns=Game.guns,gunTypes=['突击步枪','半自动手枪','近战武器'];
+  const slotIds=['rifle','pistol','knife'];
   function stored(key,fallback){try{return localStorage.getItem('greyport.'+key)??fallback}catch{return fallback}}
   function store(key,value){try{localStorage.setItem('greyport.'+key,value)}catch{}}
   const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   function text(id,value){const el=$(id),next=String(value);if(el.textContent!==next)el.textContent=next}
-  let equipped=Math.max(0,Math.min(2,Number(stored('weapon','0'))||0));
+  // Earlier versions saved 2 for the pistol, 1 for the retired SMG, and 0 for the rifle.
+  const savedSlot=stored('loadout',stored('weapon','0')==='2'?'pistol':'rifle');
+  let equipped=Math.max(0,slotIds.indexOf(savedSlot));
   let player=stored('name','')||('玩家'+String(Math.floor(Math.random()*9000)+1000));
   let lastState=null,lastRadar=0,toastTimer=0,previewMap=Arena.maps[0],joining=false;
   let target=LAN.route();
@@ -23,17 +26,18 @@
   dlg.addEventListener('click',e=>{if(e.target!==dlg)return;const r=dlg.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)closeModal()});
   if(stored('sound','on')==='off')Game.setSound(false);
   function help(){
-    const keys=[['移动','W A S D'],['转动视角','移动鼠标'],['开火','鼠标左键'],['举枪瞄准','按住右键'],['切换武器','1 / 2 / 3 或滚轮'],['单发 / 连发','B'],['换弹','R'],['跳跃','空格'],['疾跑','Shift'],['战斗菜单','Esc']];
-    showModal('help','FIELD MANUAL','操作指南','<div class="keylist">'+keys.map(([a,b])=>'<div>'+a+'<kbd>'+b+'</kbd></div>').join('')+'</div><p style="margin-top:16px">点击战区画面控制视角。步枪和冲锋枪可按 B 切换模式：单发每次点击打一发，连发可按住左键。手枪固定单发。阵亡后 15 秒自动复活。</p>');
+    const keys=[['突击步枪','1'],['手枪','2'],['刀','3'],['上一把武器','Q'],['循环切换武器','鼠标滚轮'],['开火 / 挥刀','鼠标左键'],['举枪瞄准','按住右键'],['步枪单发 / 连发','B'],['换弹','R'],['移动 / 疾跑','WASD / Shift'],['跳跃','空格'],['战斗菜单','Esc']];
+    showModal('help','FIELD MANUAL','操作指南','<div class="keylist">'+keys.map(([a,b])=>'<div>'+a+'<kbd>'+b+'</kbd></div>').join('')+'</div><p style="margin-top:16px">第一次点击画面后，移动鼠标转动视角。手枪每次点击打一发，持刀时每次点击挥一次。阵亡后 15 秒自动复活。</p>');
   }
   function armory(selected){
     const g=guns[selected];
-    const stats=[['弹匣容量',g.cap+' 发'],['基础伤害',g.damage],['射击模式',selected===2?'单发':'单发 / 连发'],
-      ['射速上限',Math.round(60/(selected===2?g.semiDelay:g.delay))+' 发/分'],
+    const stats=g.melee?[['装备键','3'],['基础伤害',g.damage],['攻击距离',g.range+' 米'],['挥击间隔',g.delay+' 秒']]:
+      [['弹匣容量',g.cap+' 发'],['基础伤害',g.damage],['射击模式',selected===0?'单发 / 连发':'单发'],
+      ['射速上限',Math.round(60/(selected===0?g.delay:g.semiDelay))+' 发/分'],
       ['常规换弹',g.load.toFixed(2)+' 秒'],['空匣换弹',g.emptyLoad.toFixed(2)+' 秒']];
     showModal('arm','LOADOUT','武器库','<div class="seg">'+guns.map((w,i)=>'<button data-gun="'+i+'" class="'+(i===selected?'chosen':'')+'">'+w.name+'</button>').join('')+'</div><canvas id="gunPreview"></canvas><div class="gunhead"><strong>'+g.name+'</strong><span>'+gunTypes[selected]+'</span></div><div class="gunstats">'+stats.map(([k,v])=>'<div>'+k+'<b>'+v+'</b></div>').join('')+'</div><div class="rowactions"><button class="bt primary" id="equip">'+(selected===equipped?'已选为出场武器':'设为出场武器')+'</button></div>');
     body.querySelectorAll('[data-gun]').forEach(b=>b.onclick=()=>armory(Number(b.dataset.gun)));
-    $('equip').onclick=()=>{equipped=selected;store('weapon',selected);closeModal();notify('下次入场使用 '+g.name)};
+    $('equip').onclick=()=>{equipped=selected;store('loadout',slotIds[selected]);closeModal();notify('下次入场使用 '+g.name)};
     Weapon.preview($('gunPreview'),selected);
   }
   function refreshPreview(){
@@ -168,6 +172,8 @@
     $('targetFill').style.transform='scaleX('+target.hp/100+')';
     targetTimer=setTimeout(()=>{health.hidden=true;shownTarget=null;},Math.max(0,target.until*1000-performance.now()));
   }
+  const slotLabels=[...$('weaponSlots').children];
+  let activeSlot=-1;
   function hud(s){
     lastState=s;
     $('fieldHint').hidden=Boolean(s.controlsEngaged);
@@ -175,7 +181,13 @@
     const secs=Math.max(0,Math.ceil(s.secondsLeft));
     text('timer',String(Math.floor(secs/60)).padStart(2,'0')+':'+String(secs%60).padStart(2,'0'));
     vitals(s.hp,s.kills,s.deaths,s.targetFeedback);
-    text('ammo',s.ammo);text('reserve',s.reserve);text('weapLabel',guns[s.weapon].name);
+    if(activeSlot!==s.weapon){
+      activeSlot=s.weapon;
+      for(let i=0;i<slotLabels.length;i++)slotLabels[i].classList.toggle('equipped',i===activeSlot);
+    }
+    text('weapLabel',guns[s.weapon].name);
+    $('ammoLine').hidden=s.melee;$('knifeAction').hidden=!s.melee;$('fireSetting').hidden=s.melee;
+    if(!s.melee){text('ammo',s.ammo);text('reserve',s.reserve);}
     const automatic=s.fireMode==='auto', reloading=s.reload>=0;
     text('fireModeLabel',automatic?'连发':'单发');
     $('fireSetting').classList.toggle('automatic',automatic);$('fireModeKey').hidden=!s.canToggleFireMode;

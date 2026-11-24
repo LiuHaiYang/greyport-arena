@@ -1325,6 +1325,25 @@ function buildOperatorGun(b,look,index) {
     for(let i=0;i<rim.length;i++){const j=(i+1)%rim.length;b.patch([left[i],left[j],right[j],right[i]],col,material)}
   }
   if(index===2){
+    const steel=[.54,.60,.60],bevel=[.82,.86,.85],spine=[.34,.42,.44],amber=[.84,.55,.20];
+    b.beam([0,-.069,0],[0,.042,-.014],.018,grip,13,8);
+    b.box(0,.045,-.014,.043,.013,.063,alloy,13);
+    b.box(0,.053,-.014,.033,.005,.048,amber,13);
+    b.box(0,-.070,0,.041,.013,.045,alloy,13);
+    b.box(0,-.066,0,.042,.004,.043,amber,13);
+    const rows=[[.054,.004,-.034,.007],[.073,.008,-.048,.007],[.178,.012,-.059,.006],[.210,.006,-.058,.004]];
+    for(const s of [-1,1]){
+      const sections=rows.map(([y,back,front,x])=>[
+        [s*.001,y,back],[s*x,y,back+(front-back)*.29],[s*x*.82,y,back+(front-back)*.69],[0,y,front]]);
+      for(let j=1;j<sections.length;j++)for(let k=0;k<3;k++){
+        b.patch([sections[j-1][k],sections[j][k],sections[j][k+1],sections[j-1][k+1]],[steel,spine,bevel][k],13);
+      }
+      const last=sections.at(-1);
+      for(let k=0;k<3;k++)b.patch([last[k],[0,.265,-.048],last[k+1]],[steel,spine,bevel][k],13);
+    }
+    return;
+  }
+  if(index===1){
     profile([[.057,.048],[.047,.088],[-.161,.088],[-.178,.078],[-.176,.054],[-.145,.044]],.029,metal);
     profile([[.054,.049],[.043,.059],[-.159,.057],[-.157,.030],[-.057,.028],[-.009,.040]],.028,grip);
     profile([[.036,.048],[-.003,.044],[-.014,.032],[.004,-.065],[.045,-.072],[.052,-.054]],.032,molded);
@@ -1338,21 +1357,19 @@ function buildOperatorGun(b,look,index) {
     for(let i=0;i<4;i++)b.box(0,.070,.014+i*.008,.030,.019,.0025,dark,13);
     return;
   }
-  const rifle=index===0;
   profile([[.064,.091],[-.146,.091],[-.157,.080],[-.152,.043],[-.110,.023],[-.023,.020],[.060,.042]],.046,alloy);
   profile([[.039,.047],[-.005,.034],[.004,-.056],[.040,-.067],[.050,-.055]],.034,grip);
-  profile(rifle?[[-.049,.025],[-.097,.027],[-.111,-.059],[-.117,-.092],[-.075,-.102],[-.055,-.064]]:
-    [[-.055,.031],[-.090,.030],[-.100,-.098],[-.066,-.099]],.036,metal,13.25);
-  const last=rifle?.388:.288;
-  profile([[-.143,.089],[-last+.022,.089],[-last,.072],[-last,.050],[-last+.012,.030],[-.143,.030]],rifle?.048:.043,molded);
-  for(let i=0;i<(rifle?6:4);i++)for(const side of [-1,1]){
-    b.box(side*(rifle?.024:.022),.066,-.168-i*.030,.0025,.011,.016,dark,13);
+  profile([[-.049,.025],[-.097,.027],[-.111,-.059],[-.117,-.092],[-.075,-.102],[-.055,-.064]],.036,metal,13.25);
+  const last=.388;
+  profile([[-.143,.089],[-last+.022,.089],[-last,.072],[-last,.050],[-last+.012,.030],[-.143,.030]],.048,molded);
+  for(let i=0;i<6;i++)for(const side of [-1,1]){
+    b.box(side*.024,.066,-.168-i*.030,.0025,.011,.016,dark,13);
   }
   b.box(0,.095,-last/2+.026,.033,.009,last+.038,metal,13);
-  const tip=rifle?.59:.425;
+  const tip=.59;
   b.beam([0,.075,-last],[0,.075,-tip+.045],.012,metal,13,10);
   b.beam([0,.075,-tip+.056],[0,.075,-tip],.018,dark,13,10);
-  const rear=rifle?.225:.160;
+  const rear=.225;
   b.beam([0,.071,.056],[0,.071,rear-.045],.020,dark,13,8);
   profile([[.081,.090],[rear-.010,.084],[rear,.072],[rear,.000],[rear-.022,-.006],[.095,.045]],.044,molded);
   b.box(0,.040,rear,.047,.094,.009,grip,13);
@@ -1374,7 +1391,7 @@ function buildOperatorGun(b,look,index) {
   const updateOperatorPose = (() => {
     const origin = [0,0,0], hips = [0,.91,0], chest = [0,.96,0], neck = [0,1.49,0];
     const gripOffset = [0,-.012,-.035];
-    const support = [[0,.04,-.26], [0,.038,-.19], [-.035,-.01,-.045]];
+    const support = [[0,.04,-.26],[-.035,-.01,-.045]];
     const dot3 = (a,b) => a[0]*b[0] + a[1]*b[1] + a[2]*b[2];
     const sub3 = (a,b) => [a[0]-b[0],a[1]-b[1],a[2]-b[2]];
     const add3 = (a,b) => [a[0]+b[0],a[1]+b[1],a[2]+b[2]];
@@ -1473,21 +1490,26 @@ function buildOperatorGun(b,look,index) {
     return function updateOperatorPose(a,time,motion,out) {
       const phase=motion.phase||0, stride=clamp(motion.stride||0,0,1);
       const forward=clamp(motion.forward||0,-1,1), side=clamp(motion.side||0,-1,1);
-      const kick=clamp(motion.kick||0,0,1), air=clamp(motion.air||0,0,1);
-      const reload=motion.reload??-1, lower=ease(0,.22,reload)*(1-ease(.75,1,reload));
+      const weapon=clamp(a.weapon|0,0,2),pistol=weapon===1,knife=weapon===2;
+      const kick=knife?0:clamp(motion.kick||0,0,1), air=clamp(motion.air||0,0,1);
+      const reload=knife?-1:(motion.reload??-1),lower=ease(0,.22,reload)*(1-ease(.75,1,reload));
       const age=a.alive===false?Math.max(0,a.deathAge||0):0;
       if(age>.29&&!motion.rest)motion.rest=groundedPose(motion);
       const buckle=ease(0,.37,age),release=ease(.10,.54,age);
       const seed=motion.seed||0, breath=Math.sin(time*2.05+seed*.83);
       const walk=Math.sin(phase), bounce=Math.cos(2*phase), aim=clamp(a.pitch||0,-1.12,1.06);
-      const weapon=clamp(a.weapon|0,0,2), pistol=weapon===2;
+      const swing=knife&&a.alive!==false?(a.swingProgress??-1):-1;
+      const wind=ease(0,.11,swing)*(1-ease(.11,.25,swing));
+      const sweep=ease(.105,.39,swing)*(1-ease(.47,1,swing));
+      const lift=ease(.10,.24,swing)*(1-ease(.24,.49,swing));
+      const highSwing=(a.swingSerial||0)%2===0;
 
       const pelvis=[.016+walk*.025*stride, .866+(.013*bounce-.007)*stride+.002*breath-.027*air-.19*buckle,
                     .026+.011*stride];
       place(out,0,angles(-.045,-.06+walk*.077*stride,.021*walk*stride),hips,pelvis);
       const spine=point(out,0,chest);
       const lean=-.094-.065*stride*Math.max(0,forward)+aim*.105-.19*buckle-.045*kick;
-      place(out,1,angles(lean,(pistol?-.085:-.155)-walk*.049*stride,
+      place(out,1,angles(lean,(pistol?-.085:-.155)-walk*.049*stride+.31*sweep-.12*wind,
                          .013-.035*side*stride-.017*walk*stride),chest,spine);
       const throat=point(out,1,neck);
       throat[0]+=.018; throat[2]-=.016;
@@ -1510,14 +1532,17 @@ function buildOperatorGun(b,look,index) {
 
       const seat=ease(.66,.72,reload)*(1-ease(.72,.8,reload));
       const close=(a.reloadEmpty?1:.25)*ease(.76,.84,reload)*(1-ease(.84,.95,reload));
-      const gunPitch=aim-.045-stride*.045+kick*.155+lower*.32-.075*seat-.08*close;
-      const gunRot=angles(gunPitch, .025+lower*.40, -.045-lower*.65);
+      const gunPitch=knife?aim*.41-.58+.27*wind-.49*sweep:aim-.045-stride*.045+kick*.155+lower*.32-.075*seat-.08*close;
+      const gunRot=knife?angles(gunPitch,-.13+.56*wind-.75*sweep,.27-.35*wind+(highSwing?.67:1.2)*sweep):
+        angles(gunPitch,.025+lower*.40,-.045-lower*.65);
       const shoulder=point(out,1,sides[1].shoulder);
-      const grip=add3(shoulder,rotate(angles(aim*.83,0,0),
+      const grip=knife?add3(shoulder,[.038+.09*wind-.41*sweep,-.19+.13*lift+(highSwing?.065:-.055)*sweep,-.21+.10*wind-.14*lift]):
+        add3(shoulder,rotate(angles(aim*.83,0,0),
         [pistol?-.158:-.115, -.088+.006*breath-.020*stride-lower*.095,
          (pistol?-.29:-.193)+kick*.060+lower*.027]));
       place(out,15,gunRot,origin,grip);
-      const supportPalm=add3(grip,rotate(gunRot,support[weapon]));
+      const supportPalm=knife?point(out,1,[-.27-.043*sweep,1.23+.05*wind,-.24+.07*sweep]):
+        add3(grip,rotate(gunRot,support[weapon]));
       const pocketReach=ease(.23,.44,reload)*(1-ease(.48,.71,reload));
       const magTouch=ease(.075,.235,reload)*(1-ease(.73,.90,reload));
       const offset=motion.magShift;
@@ -1527,7 +1552,7 @@ function buildOperatorGun(b,look,index) {
       for(const arm of sides) {
         const left=arm.s<0;
         const handRot=left
-          ? angles(gunPitch-.08-pocketReach*.64,.08+lower*.27,-.18-lower*.27)
+          ? knife?angles(-.30,.19,-.21):angles(gunPitch-.08-pocketReach*.64,.08+lower*.27,-.18-lower*.27)
           : gunRot;
         const rest=point(out,1,[arm.s*(left?.36:.29),left?1.03:.98,left?-.06:.10]);
         const palm=release?mix3(left?leftPalm:grip,rest,release):left?leftPalm:grip;
@@ -1739,14 +1764,14 @@ function buildOperatorGun(b,look,index) {
     for(let i=0;i<3;i++){
       const builder=operatorBuilder();buildOperatorGun(builder,operatorLooks[0],i);firearmBuffers.push(builder.upload());
     }
-    const muzzleEnds=[-.59,-.425,-.184];
-    for(let i=0;i<3;i++){
+    const muzzleEnds=[-.59,-.184];
+    for(let i=0;i<muzzleEnds.length;i++){
       const builder=operatorBuilder(),z=muzzleEnds[i],flare=c('ffe078');
       builder.bone('gun');
       for(let j=0;j<5;j++){
         const a=j*Math.PI*.4,r=.039+.011*(j%2),y=.074;
         const edge=[r*Math.cos(a),y+r*Math.sin(a),z-.027];
-        builder.patch([[0,y,z],edge,[0,y,z-(i===2?.106:.177)]],flare,15);
+        builder.patch([[0,y,z],edge,[0,y,z-(i===1?.106:.177)]],flare,15);
       }
       firearmBuffers.push(builder.upload());
     }
@@ -1885,7 +1910,7 @@ function buildOperatorGun(b,look,index) {
         gl.uniform4fv(p['bones[0]'],m.bones);gl.uniform1f(p.style,m.style);
         if(shadow)gl.uniform1f(p.floorY,0.);
         drawPart((shadow||distant?distantCharacters:characterBuffers)[m.style]);drawPart(firearmBuffers[weapon]);
-        if(!shadow && a.alive!==false&&a.flash)drawPart(firearmBuffers[weapon+3]);
+        if(!shadow && a.alive!==false&&weapon<2&&a.flash)drawPart(firearmBuffers[weapon+3]);
       }
     }
     if(operatorStencil){

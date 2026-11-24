@@ -12,7 +12,7 @@ function readGame() {
 }
 const script = readGame();
 
-function scenario(shooterId, mapId) {
+function scenario(shooterId, mapId, testLoadout=false) {
   const clients = new Map();
   const packets = [];
   let clock = 100000;
@@ -83,6 +83,7 @@ function scenario(shooterId, mapId) {
     };
     client.blur = ()=>win.blur();
     client.key = (down,code)=>dom[down?'keydown':'keyup']({code,target:canvases.scene,preventDefault(){}});
+    client.wheel = deltaY=>dom.wheel({deltaY,target:canvases.scene,preventDefault(){}});
     clients.set(id, client);
     return client;
   }
@@ -161,6 +162,11 @@ function scenario(shooterId, mapId) {
     assert.equal(target.vitals.hp,hp,'the victim’s health bar updates independently of painting a frame');
     assert.equal(shooter.view.actors[0].hp,hp,'shooter’s displayed opponent health');
     assert.equal(authoritativeHp(),hp,'host simulation health');
+  }
+  if (testLoadout) {
+    oneWayDelay=50;
+    verifyLoadout({shooter,target,clients,advance,aimAtTarget,bothSeeHp,tap});
+    return;
   }
   target.press(true); target.press(false);
   target.look(Math.PI/2,0);
@@ -252,5 +258,125 @@ function scenario(shooterId, mapId) {
   assert.equal(shooter.game.state.kills,2);
   console.log(mapId + ', shooter ' + shooterId + ': covered, visible-body and protected shots verified; respawn crossed 15s. Three moving chest hits also matched both HUDs with 100 ms each way.');
 }
+
+function verifyLoadout({shooter,target,clients,advance,aimAtTarget,bothSeeHp,tap}) {
+  const state=()=>shooter.game.state;
+  const remote=()=>target.view.actors.find(a=>a.id===shooter.id);
+  const key=code=>{shooter.key(true,code); shooter.key(false,code);};
+  function slot(index) {
+    advance(300);
+    assert.equal(state().weapon,index,'local selected weapon');
+    assert.equal(remote().weapon,index,'remote equipped model');
+  }
+  function approach(stopAt=1.45) {
+    const actor=shooter.view.actors[0];
+    shooter.look(Math.atan2(actor.x-state().x,state().z-actor.z),0);
+    const distance=()=>Math.hypot(actor.x-state().x,actor.z-state().z);
+    shooter.key(true,'KeyW');
+    for(let i=0;i<80 && distance()>stopAt;i++) advance(25);
+    shooter.key(false,'KeyW');
+    advance(175);
+    assert(distance()>stopAt-.15 && distance()<=stopAt,'approach a stationary opponent through movement input');
+    aimAtTarget(0,1.12,0);
+  }
+
+  key('Digit1'); slot(0);
+  assert.equal(state().weaponName,'AR-24');
+  shooter.look(Math.PI/2,0);
+  tap();
+  const rifleAmmo=state().ammo, rifleReserve=state().reserve;
+  assert.equal(rifleAmmo,29);
+  key('KeyR'); advance(250);
+  assert(state().reload>0 && remote().reload>0,'rifle reload starts on both clients');
+  key('Digit2'); slot(1);
+  assert.equal(state().weaponName,'P-12');
+  assert.equal(state().reload,-1);
+  assert.equal(remote().reload,-1);
+  key('KeyB'); advance(150);
+  assert.equal(state().fireMode,'semi');
+  assert.equal(state().canToggleFireMode,false);
+  shooter.press(true); advance(750); shooter.press(false); advance(200);
+  assert.equal(state().ammo,11,'holding the pistol trigger consumes a single round');
+  const pistolReserve=state().reserve;
+  key('KeyQ'); slot(0);
+  advance(1750);
+  assert.equal(state().ammo,rifleAmmo,'cancelled reload must not refill the rifle in the background');
+  assert.equal(state().reserve,rifleReserve);
+  key('KeyQ'); slot(1);
+  assert.equal(state().ammo,11);
+  key('KeyR'); advance(250);
+  assert(state().reload>0 && remote().reload>0,'pistol reload starts on both clients');
+  key('Digit3'); slot(2);
+  assert.equal(state().weaponName,'战术刀');
+  key('KeyR'); key('KeyB'); advance(150);
+  assert.equal(state().reload,-1);
+  assert.equal(state().canToggleFireMode,false);
+  shooter.wheel(-120); slot(1);
+  advance(1250);
+  assert.equal(state().ammo,11,'switching to the knife cancelled the pistol reload');
+  assert.equal(state().reserve,pistolReserve);
+  shooter.wheel(120); slot(2);
+  shooter.wheel(120); slot(0);
+  shooter.wheel(-120); slot(2);
+
+  aimAtTarget(0,1.12,0);
+  const initialSwing=state().swingSerial;
+  const shots=state().shotSerial;
+  shooter.press(true);
+  advance(200);
+  assert(state().swingProgress>=0 && state().swingProgress<1,'local swing animation');
+  assert(remote().swingProgress>=0 && remote().swingProgress<1,'remote swing animation');
+  advance(950);
+  shooter.press(false); advance(150);
+  bothSeeHp(100);
+  assert.equal(state().swingSerial,initialSwing+1,'holding the knife must start a single swing');
+  assert.equal(remote().swingSerial,state().swingSerial,'remote observes the same swing');
+  assert.equal(state().swingProgress,-1);
+  assert.equal(state().shotSerial,shots,'knife did not discharge a firearm');
+  assert(!shooter.view.fx.some(e=>e.type==='trace'));
+
+  approach(2.55); // The nearest body surface is still beyond the 1.8 m blade reach.
+  tap(); advance(450); bothSeeHp(100);
+  approach();
+  shooter.look(state().yaw+Math.PI,0);
+  tap(); advance(450); bothSeeHp(100);
+  aimAtTarget(0,1.12,0);
+  const wall={x:(state().x+target.game.state.x)/2,z:(state().z+target.game.state.z)/2,w:2,d:.12,h:2};
+  for(const c of clients.values()) c.arena.map.walls.push(wall);
+  tap(); advance(550); bothSeeHp(100);
+  for(const c of clients.values()) c.arena.map.walls.pop();
+  shooter.press(true); advance(50);
+  bothSeeHp(100); // Still winding up the swing.
+  shooter.press(false); advance(200);
+  bothSeeHp(45);
+  const firstHit=state().swingSerial;
+  tap(); advance(200);
+  bothSeeHp(45);
+  assert.equal(state().swingSerial,firstHit,'a click during cooldown must not start a second swing');
+  tap(); advance(100);
+  bothSeeHp(0);
+  assert.equal(state().kills,1);
+  assert.equal(target.game.state.deaths,1);
+  assert.equal(target.game.state.phase,'dead');
+  advance(15200);
+  bothSeeHp(100);
+  approach();
+  assert.equal(target.game.state.invulnerable,true);
+  tap(); advance(100);
+  bothSeeHp(100);
+  assert.equal(state().targetFeedback?.protected,true);
+  advance(2350);
+  key('Digit2'); slot(1);
+  aimAtTarget(0,1.12,0); tap();
+  bothSeeHp(66);
+  assert.equal(state().ammo,10);
+  key('KeyR'); advance(1700);
+  assert.equal(state().ammo,12,'a completed pistol reload restores the two missing rounds');
+  assert.equal(state().reserve,pistolReserve-2);
+  console.log(shooter.id+' loadout: rifle/pistol/knife, number keys, Q, wheel, cancelled reloads, networked swings, cover, reach, cooldown and respawn shield passed.');
+}
+
 scenario('H','rail');
 scenario('G','warehouse');
+scenario('H','dock',true);
+scenario('G','rail',true);
