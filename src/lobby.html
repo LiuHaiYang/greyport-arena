@@ -14,17 +14,17 @@
  </div></div>
  <p id="entryStatus" role="status">正在进入战区…</p>
  <div id="hud"><div class="topleft"><canvas id="radar" width="180" height="135"></canvas><div class="radartag"><i data-i="pin"></i><span id="radarMap"></span></div></div>
- <div class="clock"><span>自由混战</span><b id="timer">05:00</b></div><div class="topright"><button id="shareMatch" class="hudbtn sharebtn" type="button"><i data-i="network"></i> 分享对局</button> <button id="pause" class="hudbtn" title="战斗菜单（Esc）" aria-label="战斗菜单"><i data-i="pause"></i></button><div id="killfeed"></div></div>
+ <div class="clock"><span id="matchMode"></span><b id="timer">05:00</b></div><div class="topright"><button id="shareMatch" class="hudbtn sharebtn" type="button"><i data-i="network"></i> 分享对局</button> <button id="pause" class="hudbtn" title="战斗菜单（Esc）" aria-label="战斗菜单"><i data-i="pause"></i></button><div id="killfeed"></div></div>
  <div id="cross" aria-hidden="true"><b></b><b></b><b></b><b></b></div><div id="marker" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
  <div id="elimination" role="status"><span>击败</span><strong id="defeatedName"></strong></div>
- <div id="targetHealth" hidden><div><span id="targetName"></span><b id="targetReading"></b></div><div class="targetTrack"><i id="targetFill"></i></div></div>
- <div class="vitals"><div class="healthrow"><i data-i="medical"></i><b id="hp">100</b><small>HP</small></div><div class="healthtrack"><b id="hpbar"></b></div><div class="scoreline"><span>击败 <b id="kills">0</b></span><span>阵亡 <b id="deaths">0</b></span></div></div>
+ <div id="targetHealth" hidden><div><span id="targetName"></span><span id="targetDamage"></span><b id="targetReading"></b></div><div class="targetTrack"><i id="targetFill"></i></div></div>
+ <div class="vitals"><div class="healthrow"><i data-i="medical"></i><b id="hp">100</b><small>HP</small><span id="damageAmount"></span></div><div class="healthtrack"><i id="hpTrail"></i><b id="hpbar"></b></div><div class="scoreline"><span>击败 <b id="kills">0</b></span><span>阵亡 <b id="deaths">0</b></span></div></div>
  <div class="munition"><div id="weapLabel">AR-24</div><div id="ammoLine"><b id="ammo">30</b> <span>/</span> <em id="reserve">120</em></div><div id="knifeAction" hidden>左键挥刀</div>
  <div id="fireSetting"><i class="burstGlyph" aria-hidden="true"><i></i><i></i><i></i></i><strong id="fireModeLabel">连发</strong><kbd id="fireModeKey">B</kbd></div>
  <div id="opticSetting"><span>倍镜</span><strong id="scopePower">2×</strong><kbd>V</kbd></div>
  <div id="reloadMeter" hidden><small id="gunstatus">换弹中</small><div class="reloadTrack"><i id="reloadFill"></i></div></div>
  <div id="weaponSlots" aria-label="武器快捷键"><small class="equipped">1 步枪</small><small>2 手枪</small><small>3 刀</small></div></div>
- <div id="fieldHint"><strong>点击画面控制视角</strong><span>WASD 移动 · 左键攻击 · Q 切回上一把 · Esc 菜单</span></div>
+ <div id="fieldHint"><strong>点击画面控制视角</strong><span>WASD 移动 · 空格跳 · Ctrl / C 蹲 · 左键攻击 · Esc 菜单</span></div>
  <div id="roomtag"></div><div id="hurt"></div></div>
  <div id="matchOverlay" hidden><div class="matchcard"><div class="eyebrow" id="matchEn"></div><h2 id="matchTitle"></h2><p id="matchText"></p><div id="matchMore"></div><div id="matchActions"></div></div></div>
 </div>

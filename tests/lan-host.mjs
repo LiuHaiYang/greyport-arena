@@ -63,7 +63,7 @@ try {
   assert.equal(reuse.status,0,'rerunning the command should reuse the running service');
   assert(!reuse.stdout.includes('map=rail'),'a second listener must not start');
   const identity=await fetch(url+'/api/identity',{headers:{Origin:'null'}});
-  assert.deepEqual(await identity.json(),{game:'greyport-arena',directPlay:4});
+  assert.deepEqual(await identity.json(),{game:'greyport-arena',directPlay:5});
   assert.equal(identity.headers.get('access-control-allow-origin'),'null');
   assert.equal((await fetch(url+'/api/rooms',{headers:{Origin:'null'}})).headers.get('access-control-allow-origin'),null);
   assert.equal((await fetch(url+'/api/identity',{headers:{Origin:'https://example.org'}})).headers.get('access-control-allow-origin'),null);
@@ -83,6 +83,9 @@ try {
   vm.runInNewContext(app[1],{window:localWindow,location:localRoute,URL,URLSearchParams,addEventListener(){}});
   const local=localWindow.LAN;
   assert.equal(local.route().room,room);
+  assert.equal(local.route().quick,false);
+  localRoute.search='';assert.equal(local.route().quick,true);
+  localRoute.search='?map=rail';assert.equal(local.route().quick,false);
   await local.enterRoom(room,'Player','rail');
   assert(local.localOnly && local.id===local.hostId && local.peers.length===1 && !local.shareUrl);
   await assert.rejects(local.createRoom(room,'Player','dock'));
@@ -126,10 +129,31 @@ try {
   assert.equal((await action('leave',{token:first[0].token}))[0],200);
   assert.equal((await action('leave', { token: host.token }))[0], 200);
   assert.equal((await list()).length, 0);
+  const arrive=async (name,options={quick:true})=>{
+    const [code,p]=await action('enter',{room:'灰港',map:'dock',name,...options});
+    assert.equal(code,200);return p;
+  };
+  const finish=async p=>assert.equal((await action('send',{token:p.token,seq:1,
+    messages:[{body:{t:'state',end:true}}]}))[0],200);
+  const busy=await arrive('busy host',{room:'A',map:'warehouse'});
+  const guest=await arrive('busy guest',{room:'A'});
+  const waiting=await arrive('waiting host',{room:'B',map:'rail'});
+  const partner=await arrive('newcomer');
+  assert.equal(partner.hostId,waiting.id);assert.equal(partner.map,'rail');
+  await finish(guest);await finish(waiting);
+  const crowd=await Promise.all(Array.from({length:6},(_,i)=>arrive('quick'+i)));
+  assert(crowd.every(p=>p.hostId===busy.id));
+  const extra=await arrive('extra');
+  assert.equal(extra.role,'host');assert.equal(extra.room,'灰港');
+  await finish(extra);
+  const next=await arrive('next');
+  assert.equal(next.role,'host');assert.equal(next.room,'灰港 2');
+  for(const p of [busy,waiting,extra,next])await action('leave',{token:p.token});
+  assert.equal((await list()).length,0);
   child.stdin.end('\n');
   const [status] = await Promise.race([exit, delay(5000, [-1], {ref:false})]);
   assert.equal(status, 0);
-  console.log('Verified direct match links, isolated local discovery, eight concurrent arrivals, capacity, exact HTML, and shutdown.');
+  console.log('Verified quick matching, named links, waiting-room priority, completed rounds, concurrent capacity, exact HTML, and shutdown.');
 } finally {
   if (child && child.exitCode === null) child.kill();
   await rm(file, { force: true });

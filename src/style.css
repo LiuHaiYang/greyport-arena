@@ -51,6 +51,13 @@ dialog,.matchcard{color:var(--fg);border:1px solid #596056;background:#1d2421;bo
 #targetHealth>div:first-child{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
 #targetName{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #targetReading{font-variant-numeric:tabular-nums;white-space:nowrap}
+#targetDamage{color:#ffbd89;font-weight:700;white-space:nowrap;margin-left:auto}
+#targetDamage:empty{display:none}
+.vitals .healthtrack{height:4px;position:relative;overflow:hidden}
+.healthtrack i,.healthtrack b{position:absolute;inset:0 auto 0 0;width:100%;height:100%}
+.healthtrack i{background:#ffab79;transition:width .38s ease .12s}
+.vitals.low{border-color:#f79b7b}.vitals.low .healthtrack b{background:#f18e70}
+#damageAmount{position:absolute;left:calc(100% + 8px);top:10px;font:700 22px/1 var(--display);color:#ffc0a0;opacity:0;text-shadow:0 1px 4px #211610}
 .targetTrack{height:3px;margin-top:4px;background:#56605a}
 #targetFill{display:block;height:100%;background:#ffc294;transform-origin:left}
 #targetHealth.protected #targetFill{background:#a6d9f4}

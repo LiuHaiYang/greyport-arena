@@ -17,12 +17,13 @@ function scenario(shooterId, mapId, extraChecks) {
   const packets = [];
   let clock = 100000;
   let oneWayDelay = 0;
+  let peers=[{id:'H',name:'Host'},{id:'G',name:'Guest'}];
   function make(id) {
     const dom = {};
     const win = {};
     const order = [];
     const canvases = {scene:{}, weapon:{}};
-    const client = {id, order, feed:[], frames:0, lockRequests:0, audioRequests:0, random:.5};
+    const client = {id, order, feed:[], damage:[], frames:0, lockRequests:0, audioRequests:0, random:.5};
     canvases.scene.requestPointerLock = () => {
       client.lockRequests++;
       document.pointerLockElement=canvases.scene;
@@ -45,18 +46,21 @@ function scenario(shooterId, mapId, extraChecks) {
       draw(state) { client.frames++; client.view=state; }
     };
     const LAN = {
-      active:true, id, hostId:'H', map:mapId, peers:[{id:'H',name:'Host'},{id:'G',name:'Guest'}],
+      active:true, id, hostId:'H', map:mapId, peers,
       send(body,to) {
         const message=structuredClone(body);
         if (id==='H' && message.t==='state') client.broadcast=message;
         if (id==='H' && message.t==='event' && message.e.kind==='shot') client.lastShot=message.e;
+        if (message.t==='hello') client.hello=message;
         packets.push({id,body:message,to,arrival:clock+oneWayDelay});
       },
       onMessage(fn) { client.receive=fn; return ()=>{client.receive=null}; },
-      onClose() {}, onPeers() {}, leave(){ this.active=false; }
+      onClose() {}, onPeers(fn){client.peersChanged=fn;return ()=>{client.peersChanged=null;};},
+      leave(){this.active=false;}
     };
     const ui = {
       feed(line){client.feed.push(line);},
+      damage(amount){client.damage.push(amount);},
       vitals(hp,kills,deaths,target){client.vitals={hp,kills,deaths,target};}
     };
     const document = {
@@ -107,6 +111,25 @@ function scenario(shooterId, mapId, extraChecks) {
       for (const c of clients.values()) c.render?.();
       deliver();
     }
+  }
+  function publishRoster(list) {
+    peers=list;
+    for(const c of clients.values()) {c.lan.peers=peers;c.peersChanged?.(peers);}
+  }
+  function joinThird() {
+    const c=make('J');
+    publishRoster([...peers,{id:c.id,name:c.id}]);
+    assert(c.game.start({map:mapId,name:c.id}));
+    for(const participant of clients.values()) {
+      const spots=participant.arena.map.spawns;
+      spots.push({x:spots[0].x+12,z:spots[0].z-3,yaw:0});
+    }
+    advance(400);
+    return c;
+  }
+  function disconnect(c) {
+    c.game.quit(); clients.delete(c.id);
+    publishRoster(peers.filter(peer=>peer.id!==c.id));
   }
   const host=make('H'), guest=make('G');
   host.lan.active=false;
@@ -168,7 +191,7 @@ function scenario(shooterId, mapId, extraChecks) {
   }
   if (extraChecks) {
     oneWayDelay=50;
-    extraChecks({shooter,target,clients,advance,aimAtTarget,bothSeeHp,tap});
+    extraChecks({shooter,target,clients,advance,aimAtTarget,bothSeeHp,tap,joinThird,disconnect});
     return;
   }
   target.press(true); target.press(false);

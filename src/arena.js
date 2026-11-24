@@ -1496,12 +1496,20 @@ function buildOperatorGun(b,look,index) {
       return out;
     }
     return function updateOperatorPose(a,time,motion,out) {
-      const phase=motion.phase||0, stride=clamp(motion.stride||0,0,1);
+      const phase=motion.phase||0;
       const forward=clamp(motion.forward||0,-1,1), side=clamp(motion.side||0,-1,1);
       const weapon=clamp(a.weapon|0,0,2),pistol=weapon===1,knife=weapon===2;
-      const kick=knife?0:clamp(motion.kick||0,0,1), air=clamp(motion.air||0,0,1);
+      const kick=knife?0:clamp(motion.kick||0,0,1);
       const reload=knife?-1:(motion.reload??-1),lower=ease(0,.22,reload)*(1-ease(.75,1,reload));
       const age=a.alive===false?Math.max(0,a.deathAge||0):0;
+      const active=1-ease(.02,.44,age);
+      const crouch=clamp(a.crouch||0,0,1)*active,air=a.grounded===false?active:0;
+      const rise=clamp((a.verticalSpeed||0)/5.7,-1,1);
+      const landing=clamp(a.landing||0,0,1)*active,flinch=clamp(a.hurt||0,0,1)*active;
+      const equip=ease(0,1,a.switchProgress||0)*active;
+      const stride=clamp(motion.stride||0,0,1)*(1-air*.9)*active;
+      const run=clamp(((motion.speed||0)-4.1)/2.25,0,1)*(1-crouch)*stride;
+      const travel=stride*(1-.46*crouch),tuck=air*(.59+.41*rise);
       if(age>.29&&!motion.rest)motion.rest=groundedPose(motion);
       const buckle=ease(0,.37,age),release=ease(.10,.54,age);
       const seed=motion.seed||0, breath=Math.sin(time*2.05+seed*.83);
@@ -1512,13 +1520,14 @@ function buildOperatorGun(b,look,index) {
       const lift=ease(.10,.24,swing)*(1-ease(.24,.49,swing));
       const highSwing=(a.swingSerial||0)%2===0;
 
-      const pelvis=[.016+walk*.025*stride, .866+(.013*bounce-.007)*stride+.002*breath-.027*air-.19*buckle,
-                    .026+.011*stride];
-      place(out,0,angles(-.045,-.06+walk*.077*stride,.021*walk*stride),hips,pelvis);
+      const pelvis=[.016+walk*.029*travel,.866+(.016*bounce-.007)*travel+.002*breath-.025*tuck-.52*crouch-.072*landing-.19*buckle,
+                    .026+.011*stride+.085*crouch];
+      place(out,0,angles(-.045-.028*crouch,-.06+walk*.085*travel,.024*walk*travel),hips,pelvis);
       const spine=point(out,0,chest);
-      const lean=-.094-.065*stride*Math.max(0,forward)+aim*.105-.19*buckle-.045*kick;
-      place(out,1,angles(lean,(pistol?-.085:-.155)-walk*.049*stride+.31*sweep-.12*wind,
-                         .013-.035*side*stride-.017*walk*stride),chest,spine);
+      const lean=-.094-(.072*travel+.052*run)*Math.max(0,forward)+aim*.105-.19*buckle-.05*kick
+        -.074*crouch-.062*landing+.077*flinch;
+      place(out,1,angles(lean,(pistol?-.085:-.155)-walk*.060*travel+.31*sweep-.12*wind+.055*flinch,
+                         .013-.041*side*travel-.020*walk*travel+.045*flinch),chest,spine);
       const throat=point(out,1,neck);
       throat[0]+=.018; throat[2]-=.016;
       place(out,2,angles(aim*.62-.045-lower*.13-.18*buckle, .02+.022*Math.sin(time*1.1+seed)+.1*buckle,
@@ -1526,28 +1535,33 @@ function buildOperatorGun(b,look,index) {
 
       for(const leg of sides) {
         const s=leg.s, cycle=phase+(s>0?Math.PI:0);
-        const sweep=Math.sin(cycle), swing=Math.max(0,-Math.cos(cycle));
-        const lift=stride*swing*swing;
-        const footPitch=forward*stride*(-sweep*.25-.08*swing)-air*.16;
+        const swing=Math.max(0,-Math.cos(cycle)),wave=Math.sin(cycle);
+        const sweep=.65*wave+.35*(2/Math.PI)*Math.asin(wave);
+        const lift=travel*swing*swing;
+        const footPitch=forward*travel*(-sweep*.25-.08*swing)-tuck*.21+.10*air*Math.max(0,-rise);
         const soleRise=Math.max(.115*Math.sin(footPitch),-.17*Math.sin(footPitch),0);
-        const ankle=[s*(.165+.08*buckle)-side*stride*sweep*.17,
-                     .105+soleRise+lift*.115+air*(s<0?.11:.045),
-                     .013+s*.088*(1-.64*stride)+forward*stride*sweep*.23+air*(s<0?-.035:.055)+s*.20*buckle];
+        const ankle=[s*(.165+.048*crouch+.08*buckle)-side*travel*sweep*.26,
+                     .105+soleRise+lift*(.123+.032*run)+tuck*(s<0?.18:.11),
+                     .013+s*.088*(1-.64*stride)+forward*travel*sweep*(.307+.048*run)+tuck*(s<0?-.11:.078)+s*.20*buckle];
         const root=point(out,0,leg.hip);
-        limb(out,leg.leg,leg.thigh,leg.shin,root,ankle,[s*.18,-.04,-1]);
+        limb(out,leg.leg,leg.thigh,leg.shin,root,ankle,[s*(.18+.20*crouch),-.04,-1]);
         place(out,leg.leg+2,angles(footPitch,-s*.09+side*stride*.08,0),leg.ankle,ankle);
       }
 
       const seat=ease(.66,.72,reload)*(1-ease(.72,.8,reload));
       const close=(a.reloadEmpty?1:.25)*ease(.76,.84,reload)*(1-ease(.84,.95,reload));
-      const gunPitch=knife?aim*.41-.58+.27*wind-.49*sweep:aim-.045-stride*.045+kick*.155+lower*.32-.075*seat-.08*close;
-      const gunRot=knife?angles(gunPitch,-.13+.56*wind-.75*sweep,.27-.35*wind+(highSwing?.67:1.2)*sweep):
-        angles(gunPitch,.025+lower*.40,-.045-lower*.65);
+      const drawPitch=equip*(knife?-.38:pistol?-.54:-.33);
+      const gunPitch=(knife?aim*.41-.58+.27*wind-.49*sweep:aim-.045-travel*.038+kick*(pistol?.23:.135)+lower*.32-.075*seat-.08*close)
+        +drawPitch-run*(knife?.08:pistol?.13:.19)-.08*landing+.055*flinch;
+      const gunRot=knife?angles(gunPitch,-.13+.56*wind-.75*sweep,.27-.35*wind+(highSwing?.67:1.2)*sweep+.32*equip):
+        angles(gunPitch,.025+lower*.40+run*(pistol?-.06:.24),-.045-lower*.65-equip*(pistol?.31:.22));
       const shoulder=point(out,1,sides[1].shoulder);
       const grip=knife?add3(shoulder,[.038+.09*wind-.41*sweep,-.19+.13*lift+(highSwing?.065:-.055)*sweep,-.21+.10*wind-.14*lift]):
         add3(shoulder,rotate(angles(aim*.83,0,0),
         [pistol?-.158:-.115, -.088+.006*breath-.020*stride-lower*.095,
-         (pistol?-.29:-.193)+kick*.060+lower*.027]));
+         (pistol?-.29:-.193)+kick*(pistol?.051:.071)+lower*.027]));
+      grip[1]-=equip*(knife?.13:pistol?.19:.11)+.019*landing;
+      grip[2]+=equip*.067+travel*walk*(knife?.086:pistol?.029:.014);
       place(out,15,gunRot,origin,grip);
       const supportPalm=knife?point(out,1,[-.27-.043*sweep,1.23+.05*wind,-.24+.07*sweep]):
         add3(grip,rotate(gunRot,support[weapon]));
@@ -1844,14 +1858,14 @@ function buildOperatorGun(b,look,index) {
     m.height=a.y||0;
   }
   function sampleMotion(a,t){
-    const id=a.id??a.name??'operator',hash=actorIdentity(id);
+    const id=a.id,hash=actorIdentity(id);
     let m=operatorMotion.get(id);
     const displacement=m?Math.hypot(a.x-m.x,a.z-m.z):0;
     if(!m || t+.25<m.t || displacement>3.5||a.spawnNo!==m.spawnNo){
       const seed=(hash%8191)*.0176;
-      m={x:a.x,z:a.z,t,seed,phase:seed,stride:0,forward:0,side:0,kick:0,flashed:false,air:0,
+      m={x:a.x,z:a.z,t,seed,phase:seed,stride:0,forward:0,side:0,kick:0,flashed:false,speed:0,
         shots:a.shotSerial,spawnNo:a.spawnNo,fallYaw:null,coverage:1,height:0,magShift:new Float32Array(3),
-        style:a.look??(/^bot-[0-9]+$/.test(id)?Number(id.slice(4))%3:hash%3),bones:new Float32Array(16*12)};
+        style:Number.isInteger(a.look)&&operatorLooks[a.look]?a.look:hash%operatorLooks.length,bones:new Float32Array(16*12)};
       operatorMotion.set(id,m);
     }
     const dead=a.alive===false,age=dead?Math.max(0,a.deathAge||0):0;
@@ -1863,16 +1877,16 @@ function buildOperatorGun(b,look,index) {
     }
     const dt=Math.min(.16,Math.max(0,t-m.t)),yaw=a.yaw||0,cs=Math.cos(yaw),sn=Math.sin(yaw);
     if(dt>0){
-      const dx=a.x-m.x,dz=a.z-m.z,distance=Math.hypot(dx,dz);
-      const f=1-Math.exp(-dt*12),speed=Math.min(1,distance/(dt*3.4));
-      m.stride+=(speed-m.stride)*f;
-      if(distance>.0001){m.forward+=((dx*sn-dz*cs)/distance-m.forward)*f;m.side+=((dx*cs+dz*sn)/distance-m.side)*f;}
-      m.phase+=Math.min(distance,.8)*4.45;
+      const vx=Number.isFinite(a.velocityX)?a.velocityX:(a.x-m.x)/dt,vz=Number.isFinite(a.velocityZ)?a.velocityZ:(a.z-m.z)/dt;
+      const f=1-Math.exp(-dt*14),speed=Math.hypot(vx,vz),crouch=Math.max(0,Math.min(1,a.crouch||0));
+      m.speed=speed;m.stride+=(Math.min(1,speed/(3.4-1.5*crouch))-m.stride)*f;
+      if(speed>.01){m.forward+=((vx*sn-vz*cs)/speed-m.forward)*f;m.side+=((vx*cs+vz*sn)/speed-m.side)*f;}
+      if(a.grounded!==false)m.phase+=Math.min(speed*dt,.85)*(4.45+2.4*crouch);
       m.kick*=Math.exp(-dt*15);
     }
     if(a.alive!==false&&((a.flash&&!m.flashed)||(m.shots!==a.shotSerial&&a.shotAge<.19)))m.kick=1;
     m.shots=a.shotSerial;
-    m.flashed=!!a.flash;m.reload=a.reload??-1;m.air=Math.max(0,Math.min(1,(a.y||0)*2.6));
+    m.flashed=!!a.flash;m.reload=a.reload??-1;
     m.x=a.x;m.z=a.z;m.t=t;
     if(dead&&m.fallYaw==null)m.fallYaw=fallHeading(a)-(a.yaw||0);
     updateOperatorPose(a,t-age,m,m.bones);
@@ -1885,6 +1899,7 @@ function buildOperatorGun(b,look,index) {
     const roster=s.actors||[],live=[];
     const detailThreshold=115-40*(s.scopeBlend||0);
     for(const a of roster){
+      if(a?.id==null)continue;
       if((a.alive===false&&(!Number.isFinite(a.deathAge)||a.deathAge>=2.2))||
         !Number.isFinite(a.x)||!Number.isFinite(a.z)){operatorMotion.delete(a.id);continue;}
       const dx=a.x-s.x,dz=a.z-s.z,dy=(a.y||0)+.9-s.y;
@@ -1898,7 +1913,7 @@ function buildOperatorGun(b,look,index) {
       motion.detailed=pixels>detailThreshold*(motion.detailed?.88:1);
       live.push([a,motion,!motion.detailed]);
     }
-    for(const id of operatorMotion.keys())if(!roster.some(a=>(a.id??a.name??'operator')===id))operatorMotion.delete(id);
+    for(const id of operatorMotion.keys())if(!roster.some(a=>a?.id===id))operatorMotion.delete(id);
     if(!live.length)return;
     const p=characterProgram;
     gl.useProgram(p.program);

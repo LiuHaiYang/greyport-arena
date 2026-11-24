@@ -78,16 +78,16 @@ assert(distance(cameraTip(.40,1),cameraTip(.40,2))>.20,'successive slashes use d
 assert(distance(rest,cameraTip(-1,1,1))>.20,'drawing the knife starts away from the resting pose');
 
 const operator={id:'slash',x:0,y:0,z:0,yaw:0,pitch:0,spawnNo:1,weapon:2,alive:true,shotSerial:0,reload:-1,swingSerial:1};
+function joint(pose,bone,point) {
+  const b=pose.bones,offset=bone*12;
+  return [0,1,2].map(i=>{
+    const row=offset+i*4;
+    return b[row]*point[0]+b[row+1]*point[1]+b[row+2]*point[2]+b[row+3];
+  });
+}
 function remotePoints(progress) {
   const pose=A.sampleMotion({...operator,swingProgress:progress},22);
-  function joint(bone,point) {
-    const b=pose.bones,offset=bone*12;
-    return [0,1,2].map(i=>{
-      const row=offset+i*4;
-      return b[row]*point[0]+b[row+1]*point[1]+b[row+2]*point[2]+b[row+3];
-    });
-  }
-  return [joint(8,[.247,.912,-.028]),joint(15,[0,.14,-.32])];
+  return [joint(pose,8,[.247,.912,-.028]),joint(pose,15,[0,.14,-.32])];
 }
 const guard=remotePoints(-1);
 const swinging=Array.from({length:21},(_,i)=>remotePoints(i/20));
@@ -96,4 +96,28 @@ for (const index of [0,1]) {
     'the third-person right hand and weapon must both move during the slash');
   assert(distance(swinging[20][index],guard[index])<.01,'remote slash returns to guard');
 }
-console.log('Verified rifle and pistol reload poses, first- and third-person knife swings, eight collapse directions, ground contact, fade and respawn.');
+function posture(options={},time=30) {
+  const actor={...operator,id:'posture',weapon:0,swingProgress:-1,grounded:true,crouch:0,...options};
+  const pose=A.sampleMotion(actor,time);
+  return {
+    head:joint(pose,2,[0,1.65,0]), chest:joint(pose,1,[0,1.33,0]),
+    left:joint(pose,11,[-.12,.10,0]),right:joint(pose,14,[.12,.10,0])
+  };
+}
+const upright=posture(), crouched=posture({crouch:1});
+assert(upright.head[1]-crouched.head[1]>.43 && upright.head[1]-crouched.head[1]<.63);
+assert(Math.abs(upright.left[1]-crouched.left[1])<.08,'crouching keeps the planted foot near the floor');
+const onPlatform=posture({y:1});
+const rising=posture({y:1,grounded:false,verticalSpeed:4.5});
+const falling=posture({y:1,grounded:false,verticalSpeed:-4.5});
+assert(distance(onPlatform.left,upright.left)<.02,'a stationary player on a crate stays grounded');
+assert(distance(rising.left,onPlatform.left)>.1 && distance(rising.left,falling.left)>.08,'airborne legs tuck then extend');
+assert(posture({landing:1}).chest[1]<upright.chest[1]-.035,'the torso absorbs the landing');
+assert(distance(posture({hurt:1}).chest,upright.chest)>.015,'the torso reacts to confirmed injury');
+const walking=[];
+for(let i=1;i<=40;i++) {
+  const pose=posture({velocityX:0,velocityZ:-4.25,z:-4.25*i/40},30+i/40);
+  walking.push(pose.left[2]-pose.right[2]);
+}
+assert(Math.min(...walking)<-.13 && Math.max(...walking)>.13,'successive steps move opposite feet forward');
+console.log('Verified weapon poses, crouch height, walking stride, airborne legs, landing and flinch, eight collapse directions, fade and respawn.');

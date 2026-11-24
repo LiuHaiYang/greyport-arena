@@ -549,18 +549,29 @@
     return [cs*sun[0]+sn*sun[2],cp*sun[1]-sp*horizontal,cp*horizontal+sp*sun[1]];
   }
   const knifeWrist=[.234,-.53,-.60],knifeArm=sub([.82,-1.62,-1.20],knifeWrist),armAxis=unit(knifeArm);
+  function carryMotion(s){
+    const crouch=clamp(s.crouch||0,0,1),grounded=s.grounded!==false;
+    const vx=s.velocityX||0,vz=s.velocityZ||0,yaw=s.yaw||0;
+    const speed=Number.isFinite(s.velocityX)&&Number.isFinite(s.velocityZ)?Math.hypot(vx,vz):(s.moving?4.25:0);
+    const weight=grounded?clamp(speed/(4.25-2.3*crouch),0,1)*(1-.56*crouch):0,phase=s.bob||0;
+    const side=clamp((vx*Math.cos(yaw)+vz*Math.sin(yaw))/4.25,-1,1);
+    return {crouch,step:weight*Math.sin(phase),bounce:weight*(1-Math.cos(2*phase))*.5,
+      side,run:s.sprinting?weight:0,air:grounded?0:1,rise:grounded?0:clamp((s.verticalSpeed||0)/5.7,-1,1),
+      land:clamp(s.landing||0,0,1),hurt:clamp((s.hurt||0)/.38,0,1)};
+  }
   function knifePose(s){
     const progress=s.swingProgress??-1,alternate=(s.swingSerial||0)%2===0;
     const wind=ease(0,.11,progress)*(1-ease(.11,.25,progress));
     const sweep=ease(.105,.39,progress)*(1-ease(.47,1,progress));
     const lift=ease(.10,.24,progress)*(1-ease(.24,.49,progress));
-    const equip=clamp(s.switchProgress||0,0,1),stride=s.moving?Math.sin(s.bob||0):0;
-    const pos=[.64+.17*wind-1.16*sweep+.025*stride,
-      -.46+.08*wind+(alternate?.19:-.09)*sweep+.085*lift-.36*equip+.014*Math.abs(stride),
-      2.01-.14*wind+.39*lift+.10*sweep];
-    const m=matrix(-1.02+.24*wind-(alternate?.38:.70)*sweep,
-      -.30-.10*wind+(alternate?-.68:.20)*sweep+.36*equip,
-      .47-.44*wind+(alternate?.62:1.21)*sweep-.40*equip);
+    const equip=ease(0,1,s.switchProgress||0),gait=carryMotion(s),carry=1-.8*Math.max(wind,sweep);
+    const pos=[.64+.17*wind-1.16*sweep+carry*(.060*gait.step+.09*gait.run-.08*gait.crouch),
+      -.46+.08*wind+(alternate?.19:-.09)*sweep+.085*lift-.42*equip+
+        carry*(.045*gait.bounce+.082*gait.crouch-.12*gait.run+.048*gait.rise-.16*gait.land),
+      2.01-.14*wind+.39*lift+.10*sweep+carry*(.065*gait.step-.12*gait.air)];
+    const m=matrix(-1.02+.24*wind-(alternate?.38:.70)*sweep-.085*gait.side*carry,
+      -.30-.10*wind+(alternate?-.68:.20)*sweep+.36*equip+carry*(.085*gait.run-.075*gait.rise+.12*gait.land),
+      .47-.44*wind+(alternate?.62:1.21)*sweep-.40*equip+carry*(.065*gait.step-.10*gait.crouch+.08*gait.hurt));
     const wrist=rotate(knifeWrist,m);
     const delta=[.86-.19*sweep,-1.70,1.91].map((v,i)=>v-pos[i]-wrist[i]);
     const aim=[0,1,2].map(i=>m[i]*delta[0]+m[i+3]*delta[1]+m[i+6]*delta[2]);
@@ -599,16 +610,23 @@
     }
     const a=clamp(s.aim||0,0,1),hip=1-a;
     const pose=reloadPose(s.reload,model.index,s.reloadEmpty);
-    const rw=pose.lift, rc=clamp(s.recoil||0,-.23,1.5),side=clamp(s.recoilSide||0,-1,1),sw=s.switchProgress||0;
-    const bob=s.moving?Math.sin(s.bob||0):0, breathe=Math.sin(t*2.14)*.005;
+    const rw=pose.lift,rc=clamp(s.recoil||0,-.23,1.5),side=clamp(s.recoilSide||0,-1,1),sw=ease(0,1,s.switchProgress||0);
+    const pistol=model.index===1,gait=carryMotion(s),carry=hip*(1-rw*.68)*(1-sw);
+    const breathe=Math.sin(t*2.14)*.005;
     let mem=activeModels.get(canvas);
-    if(!mem || t<mem.time){mem={shot:s.shotSerial||0,casings:[],time:t};activeModels.set(canvas,mem);}
+    if(!mem||t<mem.time||mem.index!==model.index){mem={index:model.index,shot:s.shotSerial||0,casings:[],time:t};activeModels.set(canvas,mem);}
     mem.time=t;
-    const pos=[mix(.70,0,a)+(.025*bob+breathe)*hip-.23*rw+side*.047,
-      mix(-.64,-model.eye,a)+(.016*Math.abs(bob)+breathe)*hip-.18*sw+.24*rw+.045*pose.seat,
-      mix(model.index===1?1.83:2.37,model.index===1?1.3:2.14,a)-rc*(.18-.045*a)+.12*rw];
-    const m=matrix(-.115*hip-.34*rw+side*.057,-.095*hip-rc*(.112-.032*a)+.24*sw-.07*rw+.06*pose.finish,
-      .082*hip-.78*rw-.21*sw+side*.064-.041*pose.seat);
+    const pos=[mix(.70,0,a)+breathe*hip-.23*rw+side*(pistol?.062:.041)+sw*(pistol?.14:-.07)+
+        carry*(gait.step*(pistol?.047:.031)-gait.crouch*(pistol?.045:.085)+gait.run*(pistol?.075:-.14)),
+      mix(-.64,-model.eye,a)+breathe*hip-sw*(pistol?.41:.31)+.24*rw+.045*pose.seat+
+        carry*(gait.bounce*(pistol?.036:.024)+.06*gait.crouch-gait.run*(pistol?.15:.11)+.05*gait.rise-gait.land*(pistol?.14:.10)),
+      mix(pistol?1.83:2.37,pistol?1.3:2.14,a)-rc*((pistol?.14:.20)-.04*a)+.12*rw+
+        carry*(.034*gait.step-.075*gait.air+.055*gait.land)];
+    const m=matrix(-.115*hip-.34*rw+side*.057+carry*(gait.run*(pistol?.06:.27)+.04*gait.side),
+      -.095*hip-rc*((pistol?.18:.105)-.032*a)+sw*(pistol?.39:.27)-.07*rw+.06*pose.finish+
+        carry*(.078*gait.run-.062*gait.rise+.091*gait.land),
+      .082*hip-.78*rw-sw*(pistol?.39:.22)+side*.064-.041*pose.seat+
+        carry*(gait.step*(pistol?.048:.027)-.063*gait.crouch+.055*gait.hurt));
     const slide=Math.max(s.flash||0,pose.finish*.8)*(model.index===1?.19:.075);
     const projected=gpu?gpu.draw(model,m,pos,f,w,h,pose,slide,key,exposure):
       render(model,{...target,m,pos,f,cx:w*.5,cy:h*.5,preview:false,pose,slide,key,exposure});

@@ -26,7 +26,7 @@
   dlg.addEventListener('click',e=>{if(e.target!==dlg)return;const r=dlg.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)closeModal()});
   if(stored('sound','on')==='off')Game.setSound(false);
   function help(){
-    const keys=[['突击步枪','1'],['手枪','2'],['刀','3'],['上一把武器','Q'],['循环切换武器','鼠标滚轮'],['开火 / 挥刀','鼠标左键'],['举枪瞄准 / 开镜','按住右键'],['步枪倍镜 2× / 4× / 8×','V'],['步枪单发 / 连发','B'],['换弹','R'],['移动 / 疾跑','WASD / Shift'],['跳跃','空格'],['战斗菜单','Esc']];
+    const keys=[['前进 / 后退','W / S'],['左右平移','A / D'],['疾跑','Shift + 移动'],['跳跃','空格'],['蹲下 / 起身','按住 / 松开 Ctrl 或 C'],['突击步枪','1'],['手枪','2'],['刀','3'],['上一把武器','Q'],['循环切换武器','鼠标滚轮'],['开火 / 挥刀','鼠标左键'],['举枪瞄准 / 开镜','按住右键'],['步枪倍镜 2× / 4× / 8×','V'],['步枪单发 / 连发','B'],['换弹','R'],['战斗菜单','Esc']];
     showModal('help','FIELD MANUAL','操作指南','<div class="keylist">'+keys.map(([a,b])=>'<div>'+a+'<kbd>'+b+'</kbd></div>').join('')+'</div><p style="margin-top:16px">第一次点击画面后，移动鼠标转动视角。手枪每次点击打一发，持刀时每次点击挥一次。阵亡后 15 秒自动复活。</p>');
   }
   function armory(selected){
@@ -67,7 +67,16 @@
   };
   function roomLabel(){
     if(!LAN.active)return '';
-    return LAN.localOnly?LAN.room+' · 本机对局':LAN.room+' · '+LAN.peers.length+' / 8 人';
+    return LAN.localOnly?LAN.room+' · 点击「分享对局」启用联机':LAN.room+' · '+LAN.peers.length+' / 8 人';
+  }
+  function refreshPresence(){
+    if(!LAN.active)return;
+    text('roomtag',roomLabel());
+    text('matchMode',LAN.localOnly?'本机预览':LAN.peers.length<2?'等待玩家加入':'自由混战');
+    if(document.body.dataset.screen==='paused'){
+      text('matchText',Arena.map.name+' · '+roomLabel());
+      text('matchMore',LAN.localOnly?'':LAN.peers.map(p=>p.name+(p.id===LAN.id?'（你）':'')).join('、'));
+    }
   }
   function rememberRoute(){
     target={room:LAN.room,map:LAN.map};
@@ -97,13 +106,13 @@
     joining=true;
     try{
       if(create)await LAN.createRoom(route.room,name,route.map);
-      else await LAN.enterRoom(route.room,name,route.map);
+      else await LAN.enterRoom(route.room,name,route.map,route.quick===true);
       rememberRoute();closeModal();
       if(!Game.start({name,weapon:equipped})){
         Game.quit();LAN.leave();disconnected('场景加载失败。请使用支持 WebGL 的桌面浏览器后重试。');return;
       }
       player=name;if(create)store('name',name);
-      text('radarMap',Arena.map.name);text('roomtag',roomLabel());$('killfeed').replaceChildren();
+      text('radarMap',Arena.map.name);refreshPresence();$('killfeed').replaceChildren();
       $('entryStatus').hidden=true;
     }catch(e){
       const message=e.message||'连接失败，请重试。';
@@ -160,15 +169,38 @@
   }
   function feed(message){const line=document.createElement('div');line.textContent=message;const feed=$('killfeed');feed.append(line);if(feed.children.length>4)feed.firstChild.remove();setTimeout(()=>line.remove(),3200)}
   function elimination(name){text('defeatedName',name)}
-  let shownTarget=null,targetTimer=0;
+  let shownTarget=null,targetTimer=0,lastHP=null;
+  function damage(amount){
+    if(!(amount>0))return;
+    const number=$('damageAmount'),edge=$('hurt');
+    number.textContent='−'+amount;
+    for(const el of [number,edge])for(const anim of el.getAnimations())anim.cancel();
+    number.animate([{opacity:1},{opacity:1,offset:.7},{opacity:0}],650);
+    if(!matchMedia('(prefers-reduced-motion: reduce)').matches)
+      edge.animate([{opacity:.54},{opacity:.22,offset:.3},{opacity:0}],360);
+  }
   function vitals(hp,kills,deaths,target){
-    text('kills',kills);text('deaths',deaths);text('hp',Math.ceil(hp));$('hpbar').style.width=Math.max(0,hp)+'%';
+    text('kills',kills);text('deaths',deaths);
+    if(hp!==lastHP){
+      const value=Math.max(0,Math.min(100,hp)),trail=$('hpTrail');
+      const restored=lastHP===null||hp>lastHP;
+      trail.style.transitionDuration=restored?'0s':'';
+      trail.style.transitionDelay=restored?'0s':'';
+      trail.style.width=$('hpbar').style.width=value+'%';
+      if(restored){
+        for(const el of [$('damageAmount'),$('hurt')])for(const anim of el.getAnimations())anim.cancel();
+        text('damageAmount','');
+      }
+      $('hpbar').closest('.vitals').classList.toggle('low',value<=30);
+      text('hp',Math.ceil(value));lastHP=hp;
+    }
     if(target===shownTarget)return;
     clearTimeout(targetTimer);shownTarget=target;
     const health=$('targetHealth');
     health.hidden=!target;
     if(!target)return;
     text('targetName',target.name);text('targetReading',target.protected?'出生保护':target.hp+' HP');
+    text('targetDamage',!target.protected&&target.damage>0?'−'+target.damage:'');
     health.classList.toggle('protected',target.protected);
     $('targetFill').style.transform='scaleX('+target.hp/100+')';
     targetTimer=setTimeout(()=>{health.hidden=true;shownTarget=null;},Math.max(0,target.until*1000-performance.now()));
@@ -189,7 +221,6 @@
   function hud(s){
     lastState=s;
     $('fieldHint').hidden=Boolean(s.controlsEngaged);
-    text('roomtag',roomLabel());
     const secs=Math.max(0,Math.ceil(s.secondsLeft));
     text('timer',String(Math.floor(secs/60)).padStart(2,'0')+':'+String(secs%60).padStart(2,'0'));
     vitals(s.hp,s.kills,s.deaths,s.targetFeedback);
@@ -214,7 +245,6 @@
     marker.classList.toggle('confirmed',confirm>0);
     marker.style.opacity=confirm>0?String(Math.min(1,confirm*5)):String(Math.min(1,(s.hit||0)*14));
     $('elimination').classList.toggle('visible',confirm>0);
-    $('hurt').style.opacity=Math.min(.78,(s.hurt||0)*2);
     const spread=4.5-3*s.aim+(s.moving?1.5:0)*(1-s.aim)+(s.recoil||0)*(10-5*s.aim);
     cross.style.setProperty('--spread',Math.min(21,spread).toFixed(1)+'px');
     cross.style.opacity=reloading?'.28':s.hp>0?'1':'0';
@@ -230,6 +260,7 @@
     const s=Game.state||lastState||{};
     if(phase==='paused'){
       overlay('FIELD MENU','战斗菜单',Arena.map.name+' · '+roomLabel());
+      refreshPresence();
       action('返回战斗',()=>Game.resume(),true,'resumeMatch');action('分享对局',share,false,'menuShare');
       action('另开对局',newMatch,false,'newMatch');action('地图简报',maps,false,'mapBtn');action('武器库',()=>armory(equipped),false,'navArm');
       action('操作指南',help,false,'help');
@@ -246,12 +277,13 @@
     }
   }
   $('pause').onclick=()=>Game.pause();$('shareMatch').onclick=share;
-  LAN.onPeers(()=>{text('roomtag',roomLabel());if(document.body.dataset.screen==='paused')text('matchText',Arena.map.name+' · '+roomLabel())});
-  window.UI={screen,hud,scope,vitals,notify,feed,elimination};
+  LAN.onPeers(refreshPresence);
+  window.UI={screen,hud,scope,vitals,damage,notify,feed,elimination};
   window.addEventListener('resize',()=>{if($('largePlot'))refreshPreview();if($('gunPreview'))Weapon.preview($('gunPreview'),Number(body.querySelector('.chosen')?.dataset.gun??0))});
+  const seekMatchOnHost=target.quick;
   void enter(target).then(async()=>{
     if(!LAN.localOnly)return;
     const origin=await LAN.probeLocalHost();
-    if(origin&&LAN.localOnly)location.replace(LAN.playUrl(origin,LAN.room,LAN.map));
+    if(origin&&LAN.localOnly)location.replace(seekMatchOnHost?origin+'/':LAN.playUrl(origin,LAN.room,LAN.map));
   });
 })();

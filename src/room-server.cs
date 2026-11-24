@@ -38,6 +38,7 @@ public static class GreyportLobby
     }
     sealed class Room {
         internal string Name, Map;
+        internal bool Ended;
         internal Peer Host;
         internal readonly List<Peer> Members = new List<Peer>();
     }
@@ -106,6 +107,18 @@ public static class GreyportLobby
     }
     static object Join(string route, Dictionary<string, object> data) {
         string name = Label(data,"name",16), display = Label(data,"room",24);
+        object quick;
+        if (route=="/api/enter" && data.TryGetValue("quick",out quick) && Object.Equals(quick,true)) {
+            // Called under Gate: simultaneous arrivals see the room chosen by the previous arrival.
+            var open=Rooms.Values.Where(room=>!room.Ended && room.Members.Count<Capacity)
+                .OrderByDescending(room=>room.Members.Count==1).ThenByDescending(room=>room.Members.Count)
+                .ThenBy(room=>room.Name,StringComparer.OrdinalIgnoreCase).FirstOrDefault();
+            if(open!=null)display=open.Name;
+            else{
+                display="灰港";
+                for(int i=2;Rooms.ContainsKey(display);i++)display="灰港 "+i;
+            }
+        }
         Room r;
         bool exists = Rooms.TryGetValue(display, out r);
         bool create = route == "/api/create" || (route == "/api/enter" && !exists);
@@ -138,6 +151,7 @@ public static class GreyportLobby
             if (seq <= p.Batch) return new {ok=true};
             if (seq != p.Batch+1) throw new Problem(409,"消息顺序异常，请重新加入。");
             var staged=new List<KeyValuePair<Peer,string>>();
+            bool ended=false;
             foreach (object obj in (object[])rawMessages) {
                 var msg=obj as Dictionary<string,object>;
                 object payload, to;
@@ -145,12 +159,17 @@ public static class GreyportLobby
                     throw new Problem(400,"消息格式错误。");
                 if (msg.TryGetValue("to",out to) && to!=null && !(to is string)) throw new Problem(400,"接收者格式错误。");
                 string target=p == p.Room.Host ? to as string : p.Room.Host.Id;
+                var body=(Dictionary<string,object>)payload;
+                object finalState;
+                if(p==p.Room.Host && Field(body,"t")=="state" && body.TryGetValue("end",out finalState) && Object.Equals(finalState,true))
+                    ended=true;
                 string json=Json.Serialize(new {type="game", from=p.Id, body=payload});
                 foreach (var other in p.Room.Members)
                     if (other!=p && (String.IsNullOrEmpty(target) || target==other.Id))
                         staged.Add(new KeyValuePair<Peer,string>(other,json));
             }
             foreach (var item in staged) Publish(item.Key,item.Value);
+            if(ended)p.Room.Ended=true;
             p.Batch=seq;
             Monitor.PulseAll(Gate);
             return new {ok=true};
@@ -236,7 +255,7 @@ public static class GreyportLobby
                         IPAddress.IsLoopback(peerEndpoint.Address);
                     string cors=fileProbe ? "Access-Control-Allow-Origin: null\r\nAccess-Control-Allow-Methods: GET\r\nAccess-Control-Allow-Private-Network: true\r\nVary: Origin\r\n" : "";
                     if(verb=="OPTIONS" && !fileProbe)throw new Problem(403,"不允许跨站访问。");
-                    byte[] identity=verb=="GET"?Utf8.GetBytes("{\"game\":\"greyport-arena\",\"directPlay\":4}"):new byte[0];
+                    byte[] identity=verb=="GET"?Utf8.GetBytes("{\"game\":\"greyport-arena\",\"directPlay\":5}"):new byte[0];
                     Reply(stream,200,"application/json; charset=utf-8",identity,cors);return;
                 }
                 if(verb=="GET"){
@@ -364,7 +383,7 @@ public static class GreyportLobby
                 var data=Json.DeserializeObject(reader.ReadToEnd()) as Dictionary<string,object>;
                 object version;
                 return data!=null && Field(data,"game")=="greyport-arena" &&
-                    data.TryGetValue("directPlay",out version) && Object.Equals(version,4);
+                    data.TryGetValue("directPlay",out version) && Object.Equals(version,5);
             }
         }catch(WebException){return false;}catch(IOException){return false;}catch(ArgumentException){return false;}
         catch(InvalidOperationException){return false;}

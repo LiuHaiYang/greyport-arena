@@ -1,7 +1,7 @@
 const assert = require('node:assert/strict');
-const fs = require('node:fs');
 const vm = require('node:vm');
-const game = fs.readFileSync(__dirname + '/../src/game.js', 'utf8');
+const {readModule}=require('./gameplay.cjs');
+const game=readModule('game.js',/window\.Game\s*=\s*\{/);
 
 let frame = 0;
 const now = () => frame * 1000 / 120;
@@ -77,6 +77,40 @@ oldActor.spawn=0;oldActor.x=-20;
 guest.receive(stale,'H');advance(48);
 assert(Math.abs(host.game.state.actors[0].x-fixed)<1e-5);
 assert(Math.abs(guest.game.state.actors[0].x-before)<1e-5);
+
+// A smooth but permanently trailing opponent would pass the per-frame checks.
+// Withhold all network deliveries for 400 ms at a time. The next snapshot that
+// the host emits must contain the full position reported in the preceding batch.
+let reported=null,maxBatchError=0;
+const clientAtStart=guest.game.state.x;
+guest.key('keydown','KeyA');guest.key('keydown','ShiftLeft');
+function checkAuthority() {
+  const snapshot=outgoing.find(m=>m.from==='H'&&m.body.t==='state');
+  assert(snapshot,'host should have produced a snapshot before consuming any later poses');
+  const actor=snapshot.body.actors.find(a=>a.id==='G');
+  const error=Math.hypot(actor.x-reported.x,actor.z-reported.z);
+  maxBatchError=Math.max(maxBatchError,error);
+  assert(error<.035,'400 ms pose batches lost '+error.toFixed(3)+' m of guest movement');
+  return actor;
+}
+for(let i=0;i<5;i++) {
+  if(i===4){guest.key('keyup','KeyA');guest.key('keyup','ShiftLeft');}
+  advance(48,true);
+  if(reported)checkAuthority();
+  const poses=outgoing.filter(m=>m.from==='G'&&m.body.t==='pose');
+  assert(poses.length>=4,'each 400 ms window must queue multiple separate pose messages');
+  reported=poses.at(-1).body;
+  deliver();
+}
+advance(12,true);
+const finalAuthority=checkAuthority();
+const clientAtStop=guest.game.state;
+assert(clientAtStart-clientAtStop.x>9,'the guest must actually sprint through several batches');
+assert(Math.hypot(finalAuthority.x-clientAtStop.x,finalAuthority.z-clientAtStop.z)<.035,
+  'host authoritative endpoint must match the stopped client');
+deliver();
+console.log('Four 400 ms sprint batches and stop: maximum authority/report difference '+maxBatchError.toFixed(3)+' m.');
+
 const starts=[host.game.state.x,guest.game.state.x];
 for(const c of clients.values())c.key('keydown','KeyD');
 advance(120,false,40); // Three paints in one simulated second.

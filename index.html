@@ -54,6 +54,13 @@ dialog,.matchcard{color:var(--fg);border:1px solid #596056;background:#1d2421;bo
 #targetHealth>div:first-child{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
 #targetName{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #targetReading{font-variant-numeric:tabular-nums;white-space:nowrap}
+#targetDamage{color:#ffbd89;font-weight:700;white-space:nowrap;margin-left:auto}
+#targetDamage:empty{display:none}
+.vitals .healthtrack{height:4px;position:relative;overflow:hidden}
+.healthtrack i,.healthtrack b{position:absolute;inset:0 auto 0 0;width:100%;height:100%}
+.healthtrack i{background:#ffab79;transition:width .38s ease .12s}
+.vitals.low{border-color:#f79b7b}.vitals.low .healthtrack b{background:#f18e70}
+#damageAmount{position:absolute;left:calc(100% + 8px);top:10px;font:700 22px/1 var(--display);color:#ffc0a0;opacity:0;text-shadow:0 1px 4px #211610}
 .targetTrack{height:3px;margin-top:4px;background:#56605a}
 #targetFill{display:block;height:100%;background:#ffc294;transform-origin:left}
 #targetHealth.protected #targetFill{background:#a6d9f4}
@@ -215,7 +222,7 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Web.Script.Serialization;
 
-public static class GreyportLobby_cb3c6b463a6c
+public static class GreyportLobby_5cdd15cbff26
 {
     const int Capacity = 8;
     const int MaxBody = 256 * 1024;
@@ -237,6 +244,7 @@ public static class GreyportLobby_cb3c6b463a6c
     }
     sealed class Room {
         internal string Name, Map;
+        internal bool Ended;
         internal Peer Host;
         internal readonly List<Peer> Members = new List<Peer>();
     }
@@ -305,6 +313,18 @@ public static class GreyportLobby_cb3c6b463a6c
     }
     static object Join(string route, Dictionary<string, object> data) {
         string name = Label(data,"name",16), display = Label(data,"room",24);
+        object quick;
+        if (route=="/api/enter" && data.TryGetValue("quick",out quick) && Object.Equals(quick,true)) {
+            // Called under Gate: simultaneous arrivals see the room chosen by the previous arrival.
+            var open=Rooms.Values.Where(room=>!room.Ended && room.Members.Count<Capacity)
+                .OrderByDescending(room=>room.Members.Count==1).ThenByDescending(room=>room.Members.Count)
+                .ThenBy(room=>room.Name,StringComparer.OrdinalIgnoreCase).FirstOrDefault();
+            if(open!=null)display=open.Name;
+            else{
+                display="灰港";
+                for(int i=2;Rooms.ContainsKey(display);i++)display="灰港 "+i;
+            }
+        }
         Room r;
         bool exists = Rooms.TryGetValue(display, out r);
         bool create = route == "/api/create" || (route == "/api/enter" && !exists);
@@ -337,6 +357,7 @@ public static class GreyportLobby_cb3c6b463a6c
             if (seq <= p.Batch) return new {ok=true};
             if (seq != p.Batch+1) throw new Problem(409,"消息顺序异常，请重新加入。");
             var staged=new List<KeyValuePair<Peer,string>>();
+            bool ended=false;
             foreach (object obj in (object[])rawMessages) {
                 var msg=obj as Dictionary<string,object>;
                 object payload, to;
@@ -344,12 +365,17 @@ public static class GreyportLobby_cb3c6b463a6c
                     throw new Problem(400,"消息格式错误。");
                 if (msg.TryGetValue("to",out to) && to!=null && !(to is string)) throw new Problem(400,"接收者格式错误。");
                 string target=p == p.Room.Host ? to as string : p.Room.Host.Id;
+                var body=(Dictionary<string,object>)payload;
+                object finalState;
+                if(p==p.Room.Host && Field(body,"t")=="state" && body.TryGetValue("end",out finalState) && Object.Equals(finalState,true))
+                    ended=true;
                 string json=Json.Serialize(new {type="game", from=p.Id, body=payload});
                 foreach (var other in p.Room.Members)
                     if (other!=p && (String.IsNullOrEmpty(target) || target==other.Id))
                         staged.Add(new KeyValuePair<Peer,string>(other,json));
             }
             foreach (var item in staged) Publish(item.Key,item.Value);
+            if(ended)p.Room.Ended=true;
             p.Batch=seq;
             Monitor.PulseAll(Gate);
             return new {ok=true};
@@ -435,7 +461,7 @@ public static class GreyportLobby_cb3c6b463a6c
                         IPAddress.IsLoopback(peerEndpoint.Address);
                     string cors=fileProbe ? "Access-Control-Allow-Origin: null\r\nAccess-Control-Allow-Methods: GET\r\nAccess-Control-Allow-Private-Network: true\r\nVary: Origin\r\n" : "";
                     if(verb=="OPTIONS" && !fileProbe)throw new Problem(403,"不允许跨站访问。");
-                    byte[] identity=verb=="GET"?Utf8.GetBytes("{\"game\":\"greyport-arena\",\"directPlay\":4}"):new byte[0];
+                    byte[] identity=verb=="GET"?Utf8.GetBytes("{\"game\":\"greyport-arena\",\"directPlay\":5}"):new byte[0];
                     Reply(stream,200,"application/json; charset=utf-8",identity,cors);return;
                 }
                 if(verb=="GET"){
@@ -563,7 +589,7 @@ public static class GreyportLobby_cb3c6b463a6c
                 var data=Json.DeserializeObject(reader.ReadToEnd()) as Dictionary<string,object>;
                 object version;
                 return data!=null && Field(data,"game")=="greyport-arena" &&
-                    data.TryGetValue("directPlay",out version) && Object.Equals(version,4);
+                    data.TryGetValue("directPlay",out version) && Object.Equals(version,5);
             }
         }catch(WebException){return false;}catch(IOException){return false;}catch(ArgumentException){return false;}
         catch(InvalidOperationException){return false;}
@@ -626,17 +652,17 @@ public static class GreyportLobby_cb3c6b463a6c
  </div></div>
  <p id="entryStatus" role="status">正在进入战区…</p>
  <div id="hud"><div class="topleft"><canvas id="radar" width="180" height="135"></canvas><div class="radartag"><i data-i="pin"></i><span id="radarMap"></span></div></div>
- <div class="clock"><span>自由混战</span><b id="timer">05:00</b></div><div class="topright"><button id="shareMatch" class="hudbtn sharebtn" type="button"><i data-i="network"></i> 分享对局</button> <button id="pause" class="hudbtn" title="战斗菜单（Esc）" aria-label="战斗菜单"><i data-i="pause"></i></button><div id="killfeed"></div></div>
+ <div class="clock"><span id="matchMode"></span><b id="timer">05:00</b></div><div class="topright"><button id="shareMatch" class="hudbtn sharebtn" type="button"><i data-i="network"></i> 分享对局</button> <button id="pause" class="hudbtn" title="战斗菜单（Esc）" aria-label="战斗菜单"><i data-i="pause"></i></button><div id="killfeed"></div></div>
  <div id="cross" aria-hidden="true"><b></b><b></b><b></b><b></b></div><div id="marker" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
  <div id="elimination" role="status"><span>击败</span><strong id="defeatedName"></strong></div>
- <div id="targetHealth" hidden><div><span id="targetName"></span><b id="targetReading"></b></div><div class="targetTrack"><i id="targetFill"></i></div></div>
- <div class="vitals"><div class="healthrow"><i data-i="medical"></i><b id="hp">100</b><small>HP</small></div><div class="healthtrack"><b id="hpbar"></b></div><div class="scoreline"><span>击败 <b id="kills">0</b></span><span>阵亡 <b id="deaths">0</b></span></div></div>
+ <div id="targetHealth" hidden><div><span id="targetName"></span><span id="targetDamage"></span><b id="targetReading"></b></div><div class="targetTrack"><i id="targetFill"></i></div></div>
+ <div class="vitals"><div class="healthrow"><i data-i="medical"></i><b id="hp">100</b><small>HP</small><span id="damageAmount"></span></div><div class="healthtrack"><i id="hpTrail"></i><b id="hpbar"></b></div><div class="scoreline"><span>击败 <b id="kills">0</b></span><span>阵亡 <b id="deaths">0</b></span></div></div>
  <div class="munition"><div id="weapLabel">AR-24</div><div id="ammoLine"><b id="ammo">30</b> <span>/</span> <em id="reserve">120</em></div><div id="knifeAction" hidden>左键挥刀</div>
  <div id="fireSetting"><i class="burstGlyph" aria-hidden="true"><i></i><i></i><i></i></i><strong id="fireModeLabel">连发</strong><kbd id="fireModeKey">B</kbd></div>
  <div id="opticSetting"><span>倍镜</span><strong id="scopePower">2×</strong><kbd>V</kbd></div>
  <div id="reloadMeter" hidden><small id="gunstatus">换弹中</small><div class="reloadTrack"><i id="reloadFill"></i></div></div>
  <div id="weaponSlots" aria-label="武器快捷键"><small class="equipped">1 步枪</small><small>2 手枪</small><small>3 刀</small></div></div>
- <div id="fieldHint"><strong>点击画面控制视角</strong><span>WASD 移动 · 左键攻击 · Q 切回上一把 · Esc 菜单</span></div>
+ <div id="fieldHint"><strong>点击画面控制视角</strong><span>WASD 移动 · 空格跳 · Ctrl / C 蹲 · 左键攻击 · Esc 菜单</span></div>
  <div id="roomtag"></div><div id="hurt"></div></div>
  <div id="matchOverlay" hidden><div class="matchcard"><div class="eyebrow" id="matchEn"></div><h2 id="matchTitle"></h2><p id="matchText"></p><div id="matchMore"></div><div id="matchActions"></div></div></div>
 </div>
@@ -1193,18 +1219,29 @@ public static class GreyportLobby_cb3c6b463a6c
     return [cs*sun[0]+sn*sun[2],cp*sun[1]-sp*horizontal,cp*horizontal+sp*sun[1]];
   }
   const knifeWrist=[.234,-.53,-.60],knifeArm=sub([.82,-1.62,-1.20],knifeWrist),armAxis=unit(knifeArm);
+  function carryMotion(s){
+    const crouch=clamp(s.crouch||0,0,1),grounded=s.grounded!==false;
+    const vx=s.velocityX||0,vz=s.velocityZ||0,yaw=s.yaw||0;
+    const speed=Number.isFinite(s.velocityX)&&Number.isFinite(s.velocityZ)?Math.hypot(vx,vz):(s.moving?4.25:0);
+    const weight=grounded?clamp(speed/(4.25-2.3*crouch),0,1)*(1-.56*crouch):0,phase=s.bob||0;
+    const side=clamp((vx*Math.cos(yaw)+vz*Math.sin(yaw))/4.25,-1,1);
+    return {crouch,step:weight*Math.sin(phase),bounce:weight*(1-Math.cos(2*phase))*.5,
+      side,run:s.sprinting?weight:0,air:grounded?0:1,rise:grounded?0:clamp((s.verticalSpeed||0)/5.7,-1,1),
+      land:clamp(s.landing||0,0,1),hurt:clamp((s.hurt||0)/.38,0,1)};
+  }
   function knifePose(s){
     const progress=s.swingProgress??-1,alternate=(s.swingSerial||0)%2===0;
     const wind=ease(0,.11,progress)*(1-ease(.11,.25,progress));
     const sweep=ease(.105,.39,progress)*(1-ease(.47,1,progress));
     const lift=ease(.10,.24,progress)*(1-ease(.24,.49,progress));
-    const equip=clamp(s.switchProgress||0,0,1),stride=s.moving?Math.sin(s.bob||0):0;
-    const pos=[.64+.17*wind-1.16*sweep+.025*stride,
-      -.46+.08*wind+(alternate?.19:-.09)*sweep+.085*lift-.36*equip+.014*Math.abs(stride),
-      2.01-.14*wind+.39*lift+.10*sweep];
-    const m=matrix(-1.02+.24*wind-(alternate?.38:.70)*sweep,
-      -.30-.10*wind+(alternate?-.68:.20)*sweep+.36*equip,
-      .47-.44*wind+(alternate?.62:1.21)*sweep-.40*equip);
+    const equip=ease(0,1,s.switchProgress||0),gait=carryMotion(s),carry=1-.8*Math.max(wind,sweep);
+    const pos=[.64+.17*wind-1.16*sweep+carry*(.060*gait.step+.09*gait.run-.08*gait.crouch),
+      -.46+.08*wind+(alternate?.19:-.09)*sweep+.085*lift-.42*equip+
+        carry*(.045*gait.bounce+.082*gait.crouch-.12*gait.run+.048*gait.rise-.16*gait.land),
+      2.01-.14*wind+.39*lift+.10*sweep+carry*(.065*gait.step-.12*gait.air)];
+    const m=matrix(-1.02+.24*wind-(alternate?.38:.70)*sweep-.085*gait.side*carry,
+      -.30-.10*wind+(alternate?-.68:.20)*sweep+.36*equip+carry*(.085*gait.run-.075*gait.rise+.12*gait.land),
+      .47-.44*wind+(alternate?.62:1.21)*sweep-.40*equip+carry*(.065*gait.step-.10*gait.crouch+.08*gait.hurt));
     const wrist=rotate(knifeWrist,m);
     const delta=[.86-.19*sweep,-1.70,1.91].map((v,i)=>v-pos[i]-wrist[i]);
     const aim=[0,1,2].map(i=>m[i]*delta[0]+m[i+3]*delta[1]+m[i+6]*delta[2]);
@@ -1243,16 +1280,23 @@ public static class GreyportLobby_cb3c6b463a6c
     }
     const a=clamp(s.aim||0,0,1),hip=1-a;
     const pose=reloadPose(s.reload,model.index,s.reloadEmpty);
-    const rw=pose.lift, rc=clamp(s.recoil||0,-.23,1.5),side=clamp(s.recoilSide||0,-1,1),sw=s.switchProgress||0;
-    const bob=s.moving?Math.sin(s.bob||0):0, breathe=Math.sin(t*2.14)*.005;
+    const rw=pose.lift,rc=clamp(s.recoil||0,-.23,1.5),side=clamp(s.recoilSide||0,-1,1),sw=ease(0,1,s.switchProgress||0);
+    const pistol=model.index===1,gait=carryMotion(s),carry=hip*(1-rw*.68)*(1-sw);
+    const breathe=Math.sin(t*2.14)*.005;
     let mem=activeModels.get(canvas);
-    if(!mem || t<mem.time){mem={shot:s.shotSerial||0,casings:[],time:t};activeModels.set(canvas,mem);}
+    if(!mem||t<mem.time||mem.index!==model.index){mem={index:model.index,shot:s.shotSerial||0,casings:[],time:t};activeModels.set(canvas,mem);}
     mem.time=t;
-    const pos=[mix(.70,0,a)+(.025*bob+breathe)*hip-.23*rw+side*.047,
-      mix(-.64,-model.eye,a)+(.016*Math.abs(bob)+breathe)*hip-.18*sw+.24*rw+.045*pose.seat,
-      mix(model.index===1?1.83:2.37,model.index===1?1.3:2.14,a)-rc*(.18-.045*a)+.12*rw];
-    const m=matrix(-.115*hip-.34*rw+side*.057,-.095*hip-rc*(.112-.032*a)+.24*sw-.07*rw+.06*pose.finish,
-      .082*hip-.78*rw-.21*sw+side*.064-.041*pose.seat);
+    const pos=[mix(.70,0,a)+breathe*hip-.23*rw+side*(pistol?.062:.041)+sw*(pistol?.14:-.07)+
+        carry*(gait.step*(pistol?.047:.031)-gait.crouch*(pistol?.045:.085)+gait.run*(pistol?.075:-.14)),
+      mix(-.64,-model.eye,a)+breathe*hip-sw*(pistol?.41:.31)+.24*rw+.045*pose.seat+
+        carry*(gait.bounce*(pistol?.036:.024)+.06*gait.crouch-gait.run*(pistol?.15:.11)+.05*gait.rise-gait.land*(pistol?.14:.10)),
+      mix(pistol?1.83:2.37,pistol?1.3:2.14,a)-rc*((pistol?.14:.20)-.04*a)+.12*rw+
+        carry*(.034*gait.step-.075*gait.air+.055*gait.land)];
+    const m=matrix(-.115*hip-.34*rw+side*.057+carry*(gait.run*(pistol?.06:.27)+.04*gait.side),
+      -.095*hip-rc*((pistol?.18:.105)-.032*a)+sw*(pistol?.39:.27)-.07*rw+.06*pose.finish+
+        carry*(.078*gait.run-.062*gait.rise+.091*gait.land),
+      .082*hip-.78*rw-sw*(pistol?.39:.22)+side*.064-.041*pose.seat+
+        carry*(gait.step*(pistol?.048:.027)-.063*gait.crouch+.055*gait.hurt));
     const slide=Math.max(s.flash||0,pose.finish*.8)*(model.index===1?.19:.075);
     const projected=gpu?gpu.draw(model,m,pos,f,w,h,pose,slide,key,exposure):
       render(model,{...target,m,pos,f,cx:w*.5,cy:h*.5,preview:false,pose,slide,key,exposure});
@@ -2774,12 +2818,20 @@ function buildOperatorGun(b,look,index) {
       return out;
     }
     return function updateOperatorPose(a,time,motion,out) {
-      const phase=motion.phase||0, stride=clamp(motion.stride||0,0,1);
+      const phase=motion.phase||0;
       const forward=clamp(motion.forward||0,-1,1), side=clamp(motion.side||0,-1,1);
       const weapon=clamp(a.weapon|0,0,2),pistol=weapon===1,knife=weapon===2;
-      const kick=knife?0:clamp(motion.kick||0,0,1), air=clamp(motion.air||0,0,1);
+      const kick=knife?0:clamp(motion.kick||0,0,1);
       const reload=knife?-1:(motion.reload??-1),lower=ease(0,.22,reload)*(1-ease(.75,1,reload));
       const age=a.alive===false?Math.max(0,a.deathAge||0):0;
+      const active=1-ease(.02,.44,age);
+      const crouch=clamp(a.crouch||0,0,1)*active,air=a.grounded===false?active:0;
+      const rise=clamp((a.verticalSpeed||0)/5.7,-1,1);
+      const landing=clamp(a.landing||0,0,1)*active,flinch=clamp(a.hurt||0,0,1)*active;
+      const equip=ease(0,1,a.switchProgress||0)*active;
+      const stride=clamp(motion.stride||0,0,1)*(1-air*.9)*active;
+      const run=clamp(((motion.speed||0)-4.1)/2.25,0,1)*(1-crouch)*stride;
+      const travel=stride*(1-.46*crouch),tuck=air*(.59+.41*rise);
       if(age>.29&&!motion.rest)motion.rest=groundedPose(motion);
       const buckle=ease(0,.37,age),release=ease(.10,.54,age);
       const seed=motion.seed||0, breath=Math.sin(time*2.05+seed*.83);
@@ -2790,13 +2842,14 @@ function buildOperatorGun(b,look,index) {
       const lift=ease(.10,.24,swing)*(1-ease(.24,.49,swing));
       const highSwing=(a.swingSerial||0)%2===0;
 
-      const pelvis=[.016+walk*.025*stride, .866+(.013*bounce-.007)*stride+.002*breath-.027*air-.19*buckle,
-                    .026+.011*stride];
-      place(out,0,angles(-.045,-.06+walk*.077*stride,.021*walk*stride),hips,pelvis);
+      const pelvis=[.016+walk*.029*travel,.866+(.016*bounce-.007)*travel+.002*breath-.025*tuck-.52*crouch-.072*landing-.19*buckle,
+                    .026+.011*stride+.085*crouch];
+      place(out,0,angles(-.045-.028*crouch,-.06+walk*.085*travel,.024*walk*travel),hips,pelvis);
       const spine=point(out,0,chest);
-      const lean=-.094-.065*stride*Math.max(0,forward)+aim*.105-.19*buckle-.045*kick;
-      place(out,1,angles(lean,(pistol?-.085:-.155)-walk*.049*stride+.31*sweep-.12*wind,
-                         .013-.035*side*stride-.017*walk*stride),chest,spine);
+      const lean=-.094-(.072*travel+.052*run)*Math.max(0,forward)+aim*.105-.19*buckle-.05*kick
+        -.074*crouch-.062*landing+.077*flinch;
+      place(out,1,angles(lean,(pistol?-.085:-.155)-walk*.060*travel+.31*sweep-.12*wind+.055*flinch,
+                         .013-.041*side*travel-.020*walk*travel+.045*flinch),chest,spine);
       const throat=point(out,1,neck);
       throat[0]+=.018; throat[2]-=.016;
       place(out,2,angles(aim*.62-.045-lower*.13-.18*buckle, .02+.022*Math.sin(time*1.1+seed)+.1*buckle,
@@ -2804,28 +2857,33 @@ function buildOperatorGun(b,look,index) {
 
       for(const leg of sides) {
         const s=leg.s, cycle=phase+(s>0?Math.PI:0);
-        const sweep=Math.sin(cycle), swing=Math.max(0,-Math.cos(cycle));
-        const lift=stride*swing*swing;
-        const footPitch=forward*stride*(-sweep*.25-.08*swing)-air*.16;
+        const swing=Math.max(0,-Math.cos(cycle)),wave=Math.sin(cycle);
+        const sweep=.65*wave+.35*(2/Math.PI)*Math.asin(wave);
+        const lift=travel*swing*swing;
+        const footPitch=forward*travel*(-sweep*.25-.08*swing)-tuck*.21+.10*air*Math.max(0,-rise);
         const soleRise=Math.max(.115*Math.sin(footPitch),-.17*Math.sin(footPitch),0);
-        const ankle=[s*(.165+.08*buckle)-side*stride*sweep*.17,
-                     .105+soleRise+lift*.115+air*(s<0?.11:.045),
-                     .013+s*.088*(1-.64*stride)+forward*stride*sweep*.23+air*(s<0?-.035:.055)+s*.20*buckle];
+        const ankle=[s*(.165+.048*crouch+.08*buckle)-side*travel*sweep*.26,
+                     .105+soleRise+lift*(.123+.032*run)+tuck*(s<0?.18:.11),
+                     .013+s*.088*(1-.64*stride)+forward*travel*sweep*(.307+.048*run)+tuck*(s<0?-.11:.078)+s*.20*buckle];
         const root=point(out,0,leg.hip);
-        limb(out,leg.leg,leg.thigh,leg.shin,root,ankle,[s*.18,-.04,-1]);
+        limb(out,leg.leg,leg.thigh,leg.shin,root,ankle,[s*(.18+.20*crouch),-.04,-1]);
         place(out,leg.leg+2,angles(footPitch,-s*.09+side*stride*.08,0),leg.ankle,ankle);
       }
 
       const seat=ease(.66,.72,reload)*(1-ease(.72,.8,reload));
       const close=(a.reloadEmpty?1:.25)*ease(.76,.84,reload)*(1-ease(.84,.95,reload));
-      const gunPitch=knife?aim*.41-.58+.27*wind-.49*sweep:aim-.045-stride*.045+kick*.155+lower*.32-.075*seat-.08*close;
-      const gunRot=knife?angles(gunPitch,-.13+.56*wind-.75*sweep,.27-.35*wind+(highSwing?.67:1.2)*sweep):
-        angles(gunPitch,.025+lower*.40,-.045-lower*.65);
+      const drawPitch=equip*(knife?-.38:pistol?-.54:-.33);
+      const gunPitch=(knife?aim*.41-.58+.27*wind-.49*sweep:aim-.045-travel*.038+kick*(pistol?.23:.135)+lower*.32-.075*seat-.08*close)
+        +drawPitch-run*(knife?.08:pistol?.13:.19)-.08*landing+.055*flinch;
+      const gunRot=knife?angles(gunPitch,-.13+.56*wind-.75*sweep,.27-.35*wind+(highSwing?.67:1.2)*sweep+.32*equip):
+        angles(gunPitch,.025+lower*.40+run*(pistol?-.06:.24),-.045-lower*.65-equip*(pistol?.31:.22));
       const shoulder=point(out,1,sides[1].shoulder);
       const grip=knife?add3(shoulder,[.038+.09*wind-.41*sweep,-.19+.13*lift+(highSwing?.065:-.055)*sweep,-.21+.10*wind-.14*lift]):
         add3(shoulder,rotate(angles(aim*.83,0,0),
         [pistol?-.158:-.115, -.088+.006*breath-.020*stride-lower*.095,
-         (pistol?-.29:-.193)+kick*.060+lower*.027]));
+         (pistol?-.29:-.193)+kick*(pistol?.051:.071)+lower*.027]));
+      grip[1]-=equip*(knife?.13:pistol?.19:.11)+.019*landing;
+      grip[2]+=equip*.067+travel*walk*(knife?.086:pistol?.029:.014);
       place(out,15,gunRot,origin,grip);
       const supportPalm=knife?point(out,1,[-.27-.043*sweep,1.23+.05*wind,-.24+.07*sweep]):
         add3(grip,rotate(gunRot,support[weapon]));
@@ -3122,14 +3180,14 @@ function buildOperatorGun(b,look,index) {
     m.height=a.y||0;
   }
   function sampleMotion(a,t){
-    const id=a.id??a.name??'operator',hash=actorIdentity(id);
+    const id=a.id,hash=actorIdentity(id);
     let m=operatorMotion.get(id);
     const displacement=m?Math.hypot(a.x-m.x,a.z-m.z):0;
     if(!m || t+.25<m.t || displacement>3.5||a.spawnNo!==m.spawnNo){
       const seed=(hash%8191)*.0176;
-      m={x:a.x,z:a.z,t,seed,phase:seed,stride:0,forward:0,side:0,kick:0,flashed:false,air:0,
+      m={x:a.x,z:a.z,t,seed,phase:seed,stride:0,forward:0,side:0,kick:0,flashed:false,speed:0,
         shots:a.shotSerial,spawnNo:a.spawnNo,fallYaw:null,coverage:1,height:0,magShift:new Float32Array(3),
-        style:a.look??(/^bot-[0-9]+$/.test(id)?Number(id.slice(4))%3:hash%3),bones:new Float32Array(16*12)};
+        style:Number.isInteger(a.look)&&operatorLooks[a.look]?a.look:hash%operatorLooks.length,bones:new Float32Array(16*12)};
       operatorMotion.set(id,m);
     }
     const dead=a.alive===false,age=dead?Math.max(0,a.deathAge||0):0;
@@ -3141,16 +3199,16 @@ function buildOperatorGun(b,look,index) {
     }
     const dt=Math.min(.16,Math.max(0,t-m.t)),yaw=a.yaw||0,cs=Math.cos(yaw),sn=Math.sin(yaw);
     if(dt>0){
-      const dx=a.x-m.x,dz=a.z-m.z,distance=Math.hypot(dx,dz);
-      const f=1-Math.exp(-dt*12),speed=Math.min(1,distance/(dt*3.4));
-      m.stride+=(speed-m.stride)*f;
-      if(distance>.0001){m.forward+=((dx*sn-dz*cs)/distance-m.forward)*f;m.side+=((dx*cs+dz*sn)/distance-m.side)*f;}
-      m.phase+=Math.min(distance,.8)*4.45;
+      const vx=Number.isFinite(a.velocityX)?a.velocityX:(a.x-m.x)/dt,vz=Number.isFinite(a.velocityZ)?a.velocityZ:(a.z-m.z)/dt;
+      const f=1-Math.exp(-dt*14),speed=Math.hypot(vx,vz),crouch=Math.max(0,Math.min(1,a.crouch||0));
+      m.speed=speed;m.stride+=(Math.min(1,speed/(3.4-1.5*crouch))-m.stride)*f;
+      if(speed>.01){m.forward+=((vx*sn-vz*cs)/speed-m.forward)*f;m.side+=((vx*cs+vz*sn)/speed-m.side)*f;}
+      if(a.grounded!==false)m.phase+=Math.min(speed*dt,.85)*(4.45+2.4*crouch);
       m.kick*=Math.exp(-dt*15);
     }
     if(a.alive!==false&&((a.flash&&!m.flashed)||(m.shots!==a.shotSerial&&a.shotAge<.19)))m.kick=1;
     m.shots=a.shotSerial;
-    m.flashed=!!a.flash;m.reload=a.reload??-1;m.air=Math.max(0,Math.min(1,(a.y||0)*2.6));
+    m.flashed=!!a.flash;m.reload=a.reload??-1;
     m.x=a.x;m.z=a.z;m.t=t;
     if(dead&&m.fallYaw==null)m.fallYaw=fallHeading(a)-(a.yaw||0);
     updateOperatorPose(a,t-age,m,m.bones);
@@ -3163,6 +3221,7 @@ function buildOperatorGun(b,look,index) {
     const roster=s.actors||[],live=[];
     const detailThreshold=115-40*(s.scopeBlend||0);
     for(const a of roster){
+      if(a?.id==null)continue;
       if((a.alive===false&&(!Number.isFinite(a.deathAge)||a.deathAge>=2.2))||
         !Number.isFinite(a.x)||!Number.isFinite(a.z)){operatorMotion.delete(a.id);continue;}
       const dx=a.x-s.x,dz=a.z-s.z,dy=(a.y||0)+.9-s.y;
@@ -3176,7 +3235,7 @@ function buildOperatorGun(b,look,index) {
       motion.detailed=pixels>detailThreshold*(motion.detailed?.88:1);
       live.push([a,motion,!motion.detailed]);
     }
-    for(const id of operatorMotion.keys())if(!roster.some(a=>(a.id??a.name??'operator')===id))operatorMotion.delete(id);
+    for(const id of operatorMotion.keys())if(!roster.some(a=>a?.id===id))operatorMotion.delete(id);
     if(!live.length)return;
     const p=characterProgram;
     gl.useProgram(p.program);
@@ -3298,7 +3357,7 @@ function buildOperatorGun(b,look,index) {
     // Pass a file URI so Windows can resolve drive letters, UNC paths and escaped characters.
     // PowerShell string delimiters are escaped even when the browser leaves them in a URL.
     const fileUri = source.href.replace(/'/g, '%27');
-    const typeName = 'GreyportLobby_cb3c6b463a6c';
+    const typeName = 'GreyportLobby_5cdd15cbff26';
     const dataBlock = '(?s)<' + 'script id="greyport-lobby" type="text/plain">(.*?)<' + '/script>';
     return [
       "$greyportHtml=[IO.File]::ReadAllText(([uri]'" + fileUri + "').LocalPath)",
@@ -3324,7 +3383,8 @@ function buildOperatorGun(b,look,index) {
   function route() {
     const params=new URL(location.href).searchParams;
     const map=params.get('map');
-    return {room:params.get('room')?.trim()||defaultRoom,map:validMap(map)?map:'dock'};
+    const room=params.get('room')?.trim();
+    return {room:room||defaultRoom,map:validMap(map)?map:'dock',quick:!room&&!validMap(map)};
   }
   function playUrl(origin, room=defaultRoom, map='dock') {
     const address=new URL('/',origin);
@@ -3349,7 +3409,7 @@ function buildOperatorGun(b,look,index) {
     try {
       const r=await fetch(origin+'/api/identity',{signal:abort.signal,credentials:'omit',cache:'no-store',redirect:'error'});
       const info=r.ok?await r.json():null;
-      return info?.game==='greyport-arena'&&info.directPlay===4?origin:'';
+      return info?.game==='greyport-arena'&&info.directPlay===5?origin:'';
     } catch { return ''; }
     finally { clearTimeout(timeout); }
   }
@@ -3536,7 +3596,7 @@ function buildOperatorGun(b,look,index) {
     },
     createRoom(room, name, map = 'dock') { return begin('create', { room, name, map }); },
     joinRoom(room,name) { return begin('join', { room, name, map:'dock' }); },
-    enterRoom(room,name,map='dock') { return begin('enter', { room, name, map }); },
+    enterRoom(room,name,map='dock',quick=false) { return begin('enter', { room, name, map, quick }); },
     leave,
     onMessage(fn) {
       const stop = subscribe('game', fn);
@@ -3550,7 +3610,8 @@ function buildOperatorGun(b,look,index) {
     onClose(fn) { return subscribe('close', fn); },
     send(body, to = null) {
       const current = session;
-      if (!current || !body || typeof body !== 'object' || current.peers.length === 1) return;
+      if (!current || current.localOnly || !body || typeof body !== 'object') return;
+      if (current.peers.length===1 && !(current.role==='host' && body.t==='state' && body.end)) return;
       // While a POST is pending, only the newest consecutive position or world snapshot
       // matters. Keep actions, targeted replies and their ordering intact.
       const last=current.outgoing[current.outgoing.length-1];
@@ -3580,6 +3641,7 @@ function buildOperatorGun(b,look,index) {
   const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
   const now = () => performance.now() / 1000;
   const radius = .34, eyes = 1.54, duration = 300;
+  const crouchDrop=.52, crouchSeconds=.18;
   const hipFov=72, hipHalfTangent=Math.tan(hipFov*Math.PI/360);
   const scopePowers=[2,4,8], scopeTransitionSeconds=.18;
   let scopeZoom=scopePowers[0], scopeScale=1, scopeFrom=1, scopeTo=1, scopeStarted=0;
@@ -3595,7 +3657,7 @@ function buildOperatorGun(b,look,index) {
   let clientReady = false, clientShot = 0, handoff = false, drag = null, audio, noise, muted = false;
   let controlsEngaged = false;
   let targetFeedback = null;
-  let shotSerial = 0, switchedAt = -9, stride = 0, markSeed = 0, marks = [];
+  let shotSerial = 0, stride = 0, markSeed = 0, marks = [];
   const ui = (method, ...args) => window.UI?.[method]?.(...args);
   const map = () => window.Arena.map;
   const authority = () => round?.mode === 'host';
@@ -3712,14 +3774,15 @@ function buildOperatorGun(b,look,index) {
   function makePlayer(id, name) {
     return {
       id, name: String(name || 'PLAYER').slice(0, 20),
-      x: 0, z: 0, feet: 0, vy: 0, yaw: 0, pitch: 0, grounded: true,
+      x:0,z:0,feet:0,yaw:0,pitch:0,crouch:0,grounded:true,
+      velocityX:0,velocityZ:0,verticalSpeed:0,landing:0,equippedAt:-10,hurtAt:-10,
       weapon: 0, previousWeapon:1, mags: guns.map(g => g.cap), stock: guns.map(g => g.reserve),
       hp: 100, kills: 0, deaths: 0, respawnAt: 0, safeUntil: 0, nextShot: 0,
       reloadAt:0,reloadEmpty:false,reloadCue:-1,flashUntil:0,
       modes:['auto','semi','melee'],triggerHeld:false,pressUntil:-1,lastShotAt:-10,shotsFired:0,chain:0,
       lastSwingAt:-10,swings:0,pendingSwing:null,
       kickUp:0,kickUpSpeed:0,kickSide:0,kickSideSpeed:0,kickTime:0,deathYaw:0,deathFloor:0,
-      poses:[], poseAt:null, spawnNo:0
+      poses:[],poseAt:null,movedAt:null,moveBudget:0,spawnNo:0
     };
   }
   function spawn(p, first = false) {
@@ -3730,10 +3793,11 @@ function buildOperatorGun(b,look,index) {
       spots.sort((a, b) => score(b) - score(a));
     }
     const s = spots[0];
-    p.x = s.x; p.z = s.z; p.feet = p.vy = 0; p.grounded = true;
+    p.x=s.x; p.z=s.z; p.feet=p.crouch=p.verticalSpeed=p.velocityX=p.velocityZ=p.landing=0;
+    p.grounded=true; p.equippedAt=p.hurtAt=-10;
     p.yaw = s.yaw ?? (first ? -.55 : Math.atan2(-p.x, p.z));
     p.pitch = 0; p.hp = 100; p.respawnAt = p.reloadAt = 0; p.spawnNo++;
-    p.poses.length=0;p.poseAt=null;
+    p.poses.length=0;p.poseAt=p.movedAt=null;p.moveBudget=0;
     p.pendingSwing=null; p.lastSwingAt=-10; p.swings=0;
     if (p.spawnNo===1 || p.previousWeapon===p.weapon) p.previousWeapon=p.weapon===0?1:0;
     rememberPose(p,round.time);
@@ -3768,11 +3832,15 @@ function buildOperatorGun(b,look,index) {
     return floor;
   }
   function vertical(p, dt) {
-    const floor=floorBelow(p);
-    p.vy -= 18.5 * dt;
-    p.feet += p.vy * dt;
+    const floor=floorBelow(p), wasGrounded=p.grounded;
+    p.landing=Math.max(0,p.landing-dt/.18);
+    p.verticalSpeed -= 18.5 * dt;
+    p.feet += p.verticalSpeed * dt;
     p.grounded = p.feet <= floor;
-    if (p.grounded) { p.feet = floor; p.vy = 0; }
+    if (p.grounded) {
+      if (!wasGrounded) p.landing=clamp(-p.verticalSpeed/5.7,0,1);
+      p.feet=floor; p.verticalSpeed=0;
+    }
   }
   function walkLocal(dt) {
     let right = (keys.has('KeyD') || keys.has('ArrowRight') ? 1 : 0) -
@@ -3780,22 +3848,30 @@ function buildOperatorGun(b,look,index) {
     let forward = (keys.has('KeyW') || keys.has('ArrowUp') ? 1 : 0) -
       (keys.has('KeyS') || keys.has('ArrowDown') ? 1 : 0);
     const length = Math.hypot(right, forward);
+    const crouching=keys.has('ControlLeft') || keys.has('ControlRight') || keys.has('KeyC');
+    self.crouch+=clamp((crouching?1:0)-self.crouch,-dt/crouchSeconds,dt/crouchSeconds);
+    self.velocityX=self.velocityZ=0;
     walking = length > 0;
-    running = walking && (keys.has('ShiftLeft') || keys.has('ShiftRight')) && !aimHeld && !fireHeld;
+    running = walking && !crouching && self.crouch<.01 &&
+      (keys.has('ShiftLeft') || keys.has('ShiftRight')) && !aimHeld && !fireHeld;
     if (length) {
-      const speed = running ? 6.4 : aimHeld ? 2.5 : 4.25;
+      const standingSpeed=running?6.4:aimHeld?2.5:4.25;
+      const speed=standingSpeed+(2-standingSpeed)*self.crouch;
       forward *= speed * dt / length; right *= speed * dt / length;
       const s = Math.sin(self.yaw), c = Math.cos(self.yaw);
       const oldX=self.x, oldZ=self.z;
       move(self, right * c + forward * s, right * s - forward * c);
+      self.velocityX=(self.x-oldX)/dt; self.velocityZ=(self.z-oldZ)/dt;
+      walking=Math.hypot(self.velocityX,self.velocityZ)>.02;
+      running=running && walking;
       if (self.grounded && !jumpPressed) {
         stride+=Math.hypot(self.x-oldX,self.z-oldZ);
         const stepLength=running?1.92:aimHeld?1.34:1.72;
         if (stride>=stepLength) { stride-=stepLength; footfall(running); }
       }
-      bob += dt * (running ? 13 : 9);
+      if (walking) bob+=dt*(running?13:9-3*self.crouch);
     } else stride=Math.min(stride,.3);
-    if (jumpPressed && self.grounded) { self.vy = 5.7; self.grounded = false; }
+    if (jumpPressed && self.grounded) { self.verticalSpeed=5.7; self.grounded=false; }
     jumpPressed = false;
     vertical(self, dt);
   }
@@ -3804,7 +3880,9 @@ function buildOperatorGun(b,look,index) {
     // the remaining elapsed time, so a high-refresh local camera stays smooth.
     const elapsed=clamp(time-lastMovement,0,.10);
     lastMovement=time;
-    if (phase!=='playing' || !clientReady || self.hp<=0 || !elapsed)return;
+    // An open menu releases input but gravity and a released stance still settle
+    // in the live match, including when a player pauses halfway through a jump.
+    if ((phase!=='playing' && phase!=='paused') || !clientReady || self.hp<=0 || !elapsed)return;
     const steps=Math.ceil(elapsed*60);
     for(let i=0;i<steps;i++)walkLocal(elapsed/steps);
   }
@@ -3830,8 +3908,7 @@ function buildOperatorGun(b,look,index) {
   const bodyRegions = [
     [[-.27,.76,-.23],[.28,1.48,.28]],    // vest, pack and belt
     [[-.31,1.04,-.28],[.36,1.46,.13]],   // shoulders, upper arms
-    [[-.14,1.12,-.50],[.18,1.40,-.18]],  // forearms and support hand
-    [[-.28,.00,-.30],[.28,.90,.26]]      // trousers and boots
+    [[-.14,1.12,-.50],[.18,1.40,-.18]]   // forearms and support hand
   ];
   const headRegion = [[-.145,1.47,-.21],[.20,1.82,.13]];
   function hitOperator(origin, direction, pose, limit) {
@@ -3839,15 +3916,19 @@ function buildOperatorGun(b,look,index) {
     const x=origin[0]-pose.x, z=origin[2]-pose.z;
     const localOrigin=[x*cs+z*sn,origin[1]-pose.feet,z*cs-x*sn];
     const localRay=[direction[0]*cs+direction[2]*sn,direction[1],direction[2]*cs-direction[0]*sn];
+    const stance=pose.crouch??0, drop=stance*crouchDrop;
+    // Boots stay planted as the legs fold. The vest, arms and head keep their
+    // dimensions and descend with the pelvis, as in the visible operator rig.
+    let body=rayBox(localOrigin,localRay,[-.28,0,-.30-.14*stance],[.28,.90-drop,.26],limit);
+    localOrigin[1]+=drop;
     const head=rayBox(localOrigin,localRay,headRegion[0],headRegion[1],limit);
-    let body=Infinity;
     for (const [lo,hi] of bodyRegions) {
       body=Math.min(body,rayBox(localOrigin,localRay,lo,hi,Math.min(body,limit)));
     }
     return {distance:Math.min(head,body),critical:head<body};
   }
   function eyeBob(p) {
-    return p===self ? (walking ? Math.sin(bob)*.024 : 0) : p.eyeBob || 0;
+    return p===self ? (walking && p.grounded ? Math.sin(bob)*(.024-.012*p.crouch) : 0) : p.eyeBob || 0;
   }
   function wallDistance(o, d, max, hitSurface) {
     let dist = max;
@@ -3876,21 +3957,21 @@ function buildOperatorGun(b,look,index) {
   function receiveEvent(e) {
     if (!e || !self) return;
     if (e.kind === 'frag') {
+      const fallen=players.get(e.target), killer=players.get(e.source);
+      if (!fallen || fallen.spawnNo!==e.spawn) return;
+      if (killer && Number.isInteger(e.kills)) killer.kills=e.kills;
+      if (Number.isInteger(e.deaths)) fallen.deaths=e.deaths;
       ui('feed', e.killer + '  ▸  ' + e.victim);
       if (e.source === self.id) {
         killConfirm=.48; ui('elimination',e.victim);
         tone(620,920,.07,.055,'triangle'); tone(920,1380,.12,.038,'sine',.045);
       }
-      const fallen=players.get(e.target);
-      if (fallen && fallen.spawnNo===e.spawn) {
-        fallen.hp=0; fallen.respawnAt=e.at+respawnSeconds; fallen.deathYaw=e.yaw;
-        fallen.x=e.x; fallen.z=e.z; fallen.feet=e.feet;
-        fallen.poses.length=0;
-        fallen.deathFloor=e.floor;
-        fallen.reloadAt=0; fallen.triggerHeld=false; fallen.pressUntil=-1;
-        checkLife();
-        refreshVitals();
-      }
+      fallen.hp=0; fallen.respawnAt=e.at+respawnSeconds; fallen.deathYaw=e.yaw;
+      fallen.x=e.x; fallen.z=e.z; fallen.feet=e.feet; fallen.poses.length=0;
+      fallen.velocityX=fallen.velocityZ=fallen.verticalSpeed=fallen.landing=0;
+      fallen.equippedAt=-10;fallen.deathFloor=e.floor;
+      fallen.reloadAt=0; fallen.triggerHeld=false; fallen.pressUntil=-1;
+      checkLife();refreshVitals();
     }
     if (e.kind === 'swing') {
       const actor=players.get(e.source);
@@ -3911,14 +3992,20 @@ function buildOperatorGun(b,look,index) {
           if (guns[weapon] && !guns[weapon].melee) blast(weapon, .48 / (1 + distance*.12));
         }
       }
-      if (e.victim === self.id) { hurt = .38; tone(95, 48, .11, .11); }
-      if (e.victim && shooter === self) { hit = .19; tone(900, 650, .045, .065); }
       const struck = players.get(e.victim || e.protectedId);
       if (struck && struck.spawnNo === e.victimSpawn && Number.isFinite(e.hpAfter)) {
         // A shot and its final health arrive together, before the next periodic snapshot.
+        const damage=Number.isFinite(e.damage)?e.damage:Math.max(0,struck.hp-e.hpAfter);
         if (!authority() && e.victim) struck.hp = Math.min(struck.hp, e.hpAfter);
+        if (e.victim && damage>0) {
+          struck.hurtAt=round.time;
+          if (struck===self) {
+            hurt=.38; tone(95,48,.11,.11); ui('damage',damage);
+          }
+          if (shooter===self) {hit=.19; tone(900,650,.045,.065);}
+        }
         if (shooter === self) targetFeedback = {
-          name:struck.name, hp:e.hpAfter, protected:Boolean(e.protectedId), until:now()+1.15
+          name:struck.name,hp:e.hpAfter,damage,protected:Boolean(e.protectedId),until:now()+1.15
         };
         if (struck === self || shooter === self) refreshVitals();
       }
@@ -3969,10 +4056,11 @@ function buildOperatorGun(b,look,index) {
     if (p.triggerHeld) setTrigger(p,false);
     p.previousWeapon=p.weapon; p.weapon=i; p.reloadAt=0; p.reloadEmpty=false; p.reloadCue=-1; p.pressUntil=-1;
     p.pendingSwing=null; p.lastSwingAt=-10; p.flashUntil=0;
+    p.equippedAt=round.time;
     p.nextShot = Math.max(p.nextShot, round.time + .22);
     resetKick(p);
     if (p === self) {
-      muzzle = 0; fireHeld=false; aimHeld=false; aim=0; switchedAt = round.time;
+      muzzle=0; fireHeld=false; aimHeld=false; aim=0;
       resetScope();
       tone(420, 140, .06, .038, 'triangle');
       if (!authority()) send({t:'weapon',i,seq:++clientShot,spawn:p.spawnNo}, window.LAN.hostId);
@@ -4006,7 +4094,7 @@ function buildOperatorGun(b,look,index) {
     return [p.kickSide*.020,p.kickUp*.022];
   }
   function eyePosition(p) {
-    return [p.x,p.feet+eyes+eyeBob(p),p.z];
+    return [p.x,p.feet+eyes-crouchDrop*p.crouch+eyeBob(p),p.z];
   }
   function scopedEye(p) {
     const actual=eyePosition(p), displayed=p===self?round.presentedEye:p.scopedEye;
@@ -4045,7 +4133,7 @@ function buildOperatorGun(b,look,index) {
     p.lastSwingAt=time; p.nextShot=time+knife.delay; p.swings++; p.safeUntil=0;
     if (p===self) surfaceNoise(1300,.12,.20);
     if (!authority()) return;
-    p.pendingSwing={at:time+knife.contact,origin:[p.x,p.feet+eyes+eyeBob(p),p.z],
+    p.pendingSwing={at:time+knife.contact,origin:eyePosition(p),
       yaw:p.yaw,pitch:p.pitch,seenAt:attackViewTime(p)};
     echo({kind:'swing',source:p.id,spawn:p.spawnNo,at:time,serial:p.swings});
   }
@@ -4118,6 +4206,7 @@ function buildOperatorGun(b,look,index) {
   function resolveImpact(p,time,{o,d,yaw,distance,range,victim,critical,wall}) {
     const gun=guns[p.weapon], melee=!!gun.melee;
     const damaged = victim && victim.safeUntil <= round.time;
+    const hpBefore=victim?.hp??0;
     if (damaged) {
       const damage = Math.round(gun.damage * (critical && !melee ? 1.7 : 1));
       victim.hp = Math.max(0,victim.hp-damage);
@@ -4127,6 +4216,7 @@ function buildOperatorGun(b,look,index) {
     echo({kind:melee?'slash':'shot',weapon:p.weapon,at:time,serial:melee?p.swings:p.shotsFired,
       source:p.id,victim:damaged ? victim.id : null,from,to,
       protectedId:victim && !damaged ? victim.id : null,victimSpawn:victim?.spawnNo,hpAfter:victim?.hp,
+      damage:damaged?hpBefore-victim.hp:0,
       impact:distance<range,normal:!melee && !victim && distance<range ? impactNormal(to,wall) : null});
     if (damaged && !victim.hp) {
       const deathTime = round.time + Math.max(0, now() - lastTick);
@@ -4134,7 +4224,7 @@ function buildOperatorGun(b,look,index) {
       victim.deathYaw=Math.atan2(d[0],-d[2]);
       victim.deathFloor=floorBelow(victim);
       victim.pendingSwing=null;
-      echo({kind:'frag',source:p.id,killer:p.name,victim:victim.name,target:victim.id,
+      echo({kind:'frag',source:p.id,killer:p.name,kills:p.kills,victim:victim.name,target:victim.id,deaths:victim.deaths,
         at:deathTime,yaw:victim.deathYaw,spawn:victim.spawnNo,x:victim.x,z:victim.z,feet:victim.feet,floor:victim.deathFloor});
     }
   }
@@ -4150,13 +4240,24 @@ function buildOperatorGun(b,look,index) {
       (round.hostOffset==null ? round.time : now()+round.hostOffset);
     return Math.max(0,clock-interpolationDelay);
   }
+  function motion(p) {
+    return {crouch:p.crouch,grounded:p.grounded,velocityX:p.velocityX,velocityZ:p.velocityZ,
+      verticalSpeed:p.verticalSpeed,landing:p.landing};
+  }
+  function readMotion(p,m) {
+    const bounded=(n,low,high)=>Number.isFinite(n)?clamp(n,low,high):0;
+    p.crouch=bounded(m.crouch,0,1); p.landing=bounded(m.landing,0,1);
+    p.velocityX=bounded(m.velocityX,-6.4,6.4);p.velocityZ=bounded(m.velocityZ,-6.4,6.4);
+    p.verticalSpeed=bounded(m.verticalSpeed,-20,5.7);
+    p.grounded=typeof m.grounded==='boolean'?m.grounded:p.feet<=floorBelow(p)+.015;
+  }
   function rememberPose(p,stamp) {
     const history=p.poses;
     let last=history[history.length-1];
     if(!Number.isFinite(stamp) || (last && stamp<last.stamp))return;
-    const sample={stamp,time:stamp,x:p.x,z:p.z,feet:p.feet,yaw:p.yaw,pitch:p.pitch};
+    const sample={stamp,time:stamp,x:p.x,z:p.z,feet:p.feet,yaw:p.yaw,pitch:p.pitch,...motion(p)};
     if(last && stamp===last.stamp){
-      if(p.x===last.x && p.z===last.z && p.feet===last.feet && p.yaw===last.yaw && p.pitch===last.pitch)return;
+      if (Object.keys(sample).every(key=>key==='time' || sample[key]===last[key])) return;
       history.pop();last=history[history.length-1];
     }
     if(last){
@@ -4185,11 +4286,14 @@ function buildOperatorGun(b,look,index) {
     }
     const a=history[lo],b=history[hi],f=(time-a.time)/(b.time-a.time);
     const angle=b.yaw-a.yaw;
+    const blend=key=>a[key]+(b[key]-a[key])*f;
     return {x:a.x+(b.x-a.x)*f,z:a.z+(b.z-a.z)*f,feet:a.feet+(b.feet-a.feet)*f,
-      yaw:a.yaw+Math.atan2(Math.sin(angle),Math.cos(angle))*f,pitch:a.pitch+(b.pitch-a.pitch)*f};
+      yaw:a.yaw+Math.atan2(Math.sin(angle),Math.cos(angle))*f,pitch:blend('pitch'),
+      crouch:blend('crouch'),velocityX:blend('velocityX'),velocityZ:blend('velocityZ'),
+      verticalSpeed:blend('verticalSpeed'),landing:blend('landing'),grounded:f<.5?a.grounded:b.grounded};
   }
   function pack(p) {
-    return {id:p.id,name:p.name,x:p.x,z:p.z,f:p.feet,a:p.yaw,b:p.pitch,w:p.weapon,
+    return {id:p.id,name:p.name,x:p.x,z:p.z,f:p.feet,a:p.yaw,b:p.pitch,w:p.weapon,...motion(p),equip:p.equippedAt,
       mt:p.poses.length?p.poses[p.poses.length-1].stamp:round.time,
       hp:p.hp,k:p.kills,d:p.deaths,spawn:p.spawnNo,safe:p.safeUntil,resp:p.respawnAt,
       reload:p.reloadAt,empty:p.reloadEmpty,modes:p.modes,shot:p.lastShotAt,serial:p.shotsFired,
@@ -4200,7 +4304,9 @@ function buildOperatorGun(b,look,index) {
     send({t:'state',time:round.time,remaining:round.remaining,end:round.ended,actors:[...players.values()].map(pack)},to);
   }
   function applySnapshot(msg) {
-    const listed=new Set(msg.actors.map(a=>a.id));
+    // A buffered room snapshot may still mention someone who already left.
+    const members=new Set(window.LAN.peers.map(peer=>peer.id));
+    const actors=msg.actors.filter(a=>members.has(a.id)),listed=new Set(actors.map(a=>a.id));
     if (!listed.has(self.id) || !Number.isFinite(msg.time) || msg.time<round.lastSnapshot) return;
     const received=now(),offset=msg.time-received;
     if(round.hostOffset==null)round.hostOffset=offset;
@@ -4211,7 +4317,7 @@ function buildOperatorGun(b,look,index) {
     }
     round.lastSnapshot=msg.time;round.snapshotReceived=received;
     round.time=Math.max(round.time,msg.time); round.remaining=msg.remaining; lastTick=received;
-    for (const a of msg.actors) {
+    for (const a of actors) {
       let p=players.get(a.id);
       if (!p) { p=makePlayer(a.id,a.name); players.set(p.id,p); }
       if(clientReady && a.spawn<p.spawnNo)continue;
@@ -4231,13 +4337,15 @@ function buildOperatorGun(b,look,index) {
       if (fresh || p!==self) {p.lastSwingAt=a.swing??-10;p.swings=a.swings??0;}
       if (p!==self) {
         p.x=a.x;p.z=a.z;p.feet=a.f;p.yaw=a.a;p.pitch=a.b;
+        readMotion(p,a);p.equippedAt=a.equip??-10;
         if(fresh || !p.hp)p.poses.length=0;
         if(p.hp)rememberPose(p,a.mt??msg.time);
         p.lastShotAt=a.shot; p.shotsFired=a.serial; p.flashUntil=Math.max(fresh?0:p.flashUntil,a.shot+.075);
       }
       if (fresh) {
-        p.x=a.x; p.z=a.z; p.yaw=a.a; p.pitch=a.b; p.feet=a.f; p.vy=0;
+        p.x=a.x; p.z=a.z; p.yaw=a.a; p.pitch=a.b; p.feet=a.f; p.hurtAt=-10;
         if (p===self) {
+          readMotion(p,a);p.equippedAt=-10;
           p.triggerHeld=false; resetKick(p); p.shotsFired=a.serial; p.lastShotAt=a.shot;
           lastMovement=now();muzzle=hurt=0; targetFeedback=null; clearInput();
         }
@@ -4256,14 +4364,22 @@ function buildOperatorGun(b,look,index) {
     p.scopedKick=m.ads && Array.isArray(m.kick) && m.kick.length===2 && m.kick.every(Number.isFinite)
       ? [clamp(m.kick[0],-.12,.12),clamp(m.kick[1],0,.18)] : null;
     p.scopedEye=m.ads && Array.isArray(m.eye) && m.eye.length===3 && m.eye.every(Number.isFinite) ? m.eye : null;
-    const dt=clamp(now()-(p.poseAt ?? now()),0,.8);
+    const received=now(), elapsed=clamp(received-(p.poseAt??received),0,.8);
+    const movedAt=Number.isFinite(m.movedAt)?m.movedAt:null;
+    // A group of delayed inputs often arrives within a single host tick. Retain
+    // the elapsed host time and spend it according to the sender's sample deltas.
+    const sampleDt=movedAt!==null && p.movedAt!==null?clamp(movedAt-p.movedAt,0,.8):elapsed;
+    p.moveBudget=Math.min(.8,p.moveBudget+elapsed);
+    const dt=Math.min(sampleDt,p.moveBudget);
+    p.moveBudget-=dt; p.movedAt=movedAt;
     const dx=m.x-p.x, dz=m.z-p.z, len=Math.hypot(dx,dz);
     const step=Math.min(1, (7*dt+.10)/(len || 1));
     // Apply streamed movement in short substeps so a missed packet cannot cross a wall.
     p.feet=clamp(m.feet,p.feet-8*dt-.2,p.feet+6*dt+.15);
     p.feet=clamp(p.feet,0,3.5);
     move(p,dx*step,dz*step);
-    p.yaw=m.yaw; p.pitch=clamp(m.pitch,-1.3,1.3); p.ads=!!m.ads; p.poseAt=now();
+    readMotion(p,m);
+    p.yaw=m.yaw; p.pitch=clamp(m.pitch,-1.3,1.3); p.ads=!!m.ads; p.poseAt=received;
     rememberPose(p,round.time+Math.max(0,p.poseAt-lastTick));
   }
   function wireNetwork() {
@@ -4280,7 +4396,8 @@ function buildOperatorGun(b,look,index) {
       if (msg.t==='hello') {
         if (!p) {
           const peer=lan.peers.find(a=>a.id===from);
-          p=makePlayer(from,peer?.name || msg.name);
+          if (!peer) return;
+          p=makePlayer(from,peer.name);
           players.set(from,p);
           p.weapon=Number.isInteger(msg.weapon) && guns[msg.weapon] ? msg.weapon : 0;
           spawn(p);
@@ -4302,7 +4419,7 @@ function buildOperatorGun(b,look,index) {
       if (msg.t==='trigger' && typeof msg.down==='boolean') setTrigger(p,msg.down);
     }));
     listeners.push(lan.onPeers(peers=>{
-      if (!round || round.mode!=='host') return;
+      if (!round) return;
       const ids=new Set(peers.map(p=>p.id));
       for (const [id,p] of players) if (id!==self.id && !ids.has(id)) {
         players.delete(id); ui('feed',p.name+' 已离开对局');
@@ -4314,7 +4431,7 @@ function buildOperatorGun(b,look,index) {
     }));
   }
   function poseMessage() {
-    return {x:self.x,z:self.z,yaw:self.yaw,pitch:self.pitch,feet:self.feet,ads:aimHeld,spawn:self.spawnNo,
+    return {x:self.x,z:self.z,yaw:self.yaw,pitch:self.pitch,feet:self.feet,ads:aimHeld,spawn:self.spawnNo,movedAt:lastMovement,...motion(self),
       seenAt:localShotTime(),eyeBob:eyeBob(self),kick:scopeActive()?round.presentedKick??cameraKick(self):undefined,
       eye:scopeActive()?round.presentedEye:undefined};
   }
@@ -4384,13 +4501,15 @@ function buildOperatorGun(b,look,index) {
       const age=p.hp>0?-1:Math.max(0,time-p.respawnAt+respawnSeconds);
       const pose=p.hp>0?visiblePoseAt(p,displayTime):p;
       return {id:p.id,name:p.name,x:pose.x,y:p.hp>0?pose.feet:actorFeet(p,age),z:pose.z,yaw:pose.yaw,pitch:pose.pitch,team:'enemy',alive:p.hp>0,
+        ...motion(pose),switchProgress:clamp(1-(time-p.equippedAt)/.22,0,1),hurt:clamp(1-(time-p.hurtAt)/.28,0,1),
         flash:p.hp>0 && !guns[p.weapon].melee && p.flashUntil>time,hp:p.hp,weapon:p.weapon,spawnNo:p.spawnNo,fireMode:p.modes[p.weapon],
         swingProgress:swingProgress(p,time),swingSerial:p.swings,
         reload:reloadProgress(p,time),reloadEmpty:p.reloadEmpty,shotSerial:p.shotsFired,shotAge:Math.max(0,time-p.lastShotAt),
         deathAge:age,deathYaw:p.deathYaw};
     });
     const [yawKick,pitchKick]=cameraKick(self), fov=fieldOfView();
-    return {x:self.x,z:self.z,y:actorFeet(self,deathAge)+eyes-deathDrop+eyeBob(self),
+    return {x:self.x,z:self.z,y:actorFeet(self,deathAge)+eyes-crouchDrop*self.crouch-deathDrop+eyeBob(self),
+      feet:self.feet,...motion(self),
       yaw:self.yaw+yawKick,pitch:self.pitch+pitchKick-deathDrop*.095,weapon:self.weapon,weaponName:g.name,ammo:self.mags[self.weapon],
       fov,scopeZoom,scopeActive:scopeActive(),scopeBlend:self.weapon===0 && phase==='playing' ? scopeBlend : 0,
       scopeMagnification:self.weapon===1?hipHalfTangent/Math.tan(fov*Math.PI/360):scopeScale,
@@ -4402,7 +4521,7 @@ function buildOperatorGun(b,look,index) {
       fireMode:self.modes[self.weapon],canToggleFireMode:self.weapon===0,reloadEmpty:self.reloadEmpty,
       melee:!!g.melee,swingProgress:swingProgress(self,time),swingSerial:self.swings,
       reloadStage:reload<0?'':reload<.47?'取匣':reload<.86?'装匣':'就绪',
-      bob,moving:walking,sprinting:running,reload,shotSerial,switchProgress:clamp(1-(time-switchedAt)/.22,0,1),
+      bob,moving:walking,sprinting:running,reload,shotSerial,switchProgress:clamp(1-(time-self.equippedAt)/.22,0,1),
       actors,fx:effects.concat(marks),name:self.name,mode:round.mode,map:round.map,phase,controlsEngaged,
       leaderboard:[...players.values()].map(p=>({id:p.id,name:p.name,kills:p.kills,deaths:p.deaths,isMe:p===self}))
         .sort((a,b)=>b.kills-a.kills || a.deaths-b.deaths || a.name.localeCompare(b.name))};
@@ -4471,7 +4590,7 @@ function buildOperatorGun(b,look,index) {
     if (ticker) clearInterval(ticker);
     for (const off of listeners) if (typeof off==='function') off();
     listeners=[]; players=new Map(); effects=[]; marks=[]; markSeed=stride=0; round=null; self=null;
-    frame=ticker=0; clearInput(); controlsEngaged=handoff=false; clientShot=shotSerial=0; switchedAt=-9;
+    frame=ticker=0; clearInput(); controlsEngaged=handoff=false; clientShot=shotSerial=0;
     muzzle=hurt=hit=killConfirm=aim=bob=0;
     targetFeedback=null;
   }
@@ -4523,7 +4642,7 @@ function buildOperatorGun(b,look,index) {
       return;
     }
     if (phase!=='playing' || !clientReady) return;
-    if (['Space','ArrowUp','ArrowDown','ArrowRight','ArrowLeft','Tab'].includes(e.code)) e.preventDefault();
+    if (e.ctrlKey || ['ControlLeft','ControlRight','Space','ArrowUp','ArrowDown','ArrowRight','ArrowLeft','Tab'].includes(e.code)) e.preventDefault();
     keys.add(e.code);
     if (e.repeat) return;
     if (e.code==='Space') jumpPressed=true;
@@ -4699,7 +4818,7 @@ function drawMap(canvas, state, radar=false, map=window.Arena?.map){
   dlg.addEventListener('click',e=>{if(e.target!==dlg)return;const r=dlg.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)closeModal()});
   if(stored('sound','on')==='off')Game.setSound(false);
   function help(){
-    const keys=[['突击步枪','1'],['手枪','2'],['刀','3'],['上一把武器','Q'],['循环切换武器','鼠标滚轮'],['开火 / 挥刀','鼠标左键'],['举枪瞄准 / 开镜','按住右键'],['步枪倍镜 2× / 4× / 8×','V'],['步枪单发 / 连发','B'],['换弹','R'],['移动 / 疾跑','WASD / Shift'],['跳跃','空格'],['战斗菜单','Esc']];
+    const keys=[['前进 / 后退','W / S'],['左右平移','A / D'],['疾跑','Shift + 移动'],['跳跃','空格'],['蹲下 / 起身','按住 / 松开 Ctrl 或 C'],['突击步枪','1'],['手枪','2'],['刀','3'],['上一把武器','Q'],['循环切换武器','鼠标滚轮'],['开火 / 挥刀','鼠标左键'],['举枪瞄准 / 开镜','按住右键'],['步枪倍镜 2× / 4× / 8×','V'],['步枪单发 / 连发','B'],['换弹','R'],['战斗菜单','Esc']];
     showModal('help','FIELD MANUAL','操作指南','<div class="keylist">'+keys.map(([a,b])=>'<div>'+a+'<kbd>'+b+'</kbd></div>').join('')+'</div><p style="margin-top:16px">第一次点击画面后，移动鼠标转动视角。手枪每次点击打一发，持刀时每次点击挥一次。阵亡后 15 秒自动复活。</p>');
   }
   function armory(selected){
@@ -4740,7 +4859,16 @@ function drawMap(canvas, state, radar=false, map=window.Arena?.map){
   };
   function roomLabel(){
     if(!LAN.active)return '';
-    return LAN.localOnly?LAN.room+' · 本机对局':LAN.room+' · '+LAN.peers.length+' / 8 人';
+    return LAN.localOnly?LAN.room+' · 点击「分享对局」启用联机':LAN.room+' · '+LAN.peers.length+' / 8 人';
+  }
+  function refreshPresence(){
+    if(!LAN.active)return;
+    text('roomtag',roomLabel());
+    text('matchMode',LAN.localOnly?'本机预览':LAN.peers.length<2?'等待玩家加入':'自由混战');
+    if(document.body.dataset.screen==='paused'){
+      text('matchText',Arena.map.name+' · '+roomLabel());
+      text('matchMore',LAN.localOnly?'':LAN.peers.map(p=>p.name+(p.id===LAN.id?'（你）':'')).join('、'));
+    }
   }
   function rememberRoute(){
     target={room:LAN.room,map:LAN.map};
@@ -4770,13 +4898,13 @@ function drawMap(canvas, state, radar=false, map=window.Arena?.map){
     joining=true;
     try{
       if(create)await LAN.createRoom(route.room,name,route.map);
-      else await LAN.enterRoom(route.room,name,route.map);
+      else await LAN.enterRoom(route.room,name,route.map,route.quick===true);
       rememberRoute();closeModal();
       if(!Game.start({name,weapon:equipped})){
         Game.quit();LAN.leave();disconnected('场景加载失败。请使用支持 WebGL 的桌面浏览器后重试。');return;
       }
       player=name;if(create)store('name',name);
-      text('radarMap',Arena.map.name);text('roomtag',roomLabel());$('killfeed').replaceChildren();
+      text('radarMap',Arena.map.name);refreshPresence();$('killfeed').replaceChildren();
       $('entryStatus').hidden=true;
     }catch(e){
       const message=e.message||'连接失败，请重试。';
@@ -4833,15 +4961,38 @@ function drawMap(canvas, state, radar=false, map=window.Arena?.map){
   }
   function feed(message){const line=document.createElement('div');line.textContent=message;const feed=$('killfeed');feed.append(line);if(feed.children.length>4)feed.firstChild.remove();setTimeout(()=>line.remove(),3200)}
   function elimination(name){text('defeatedName',name)}
-  let shownTarget=null,targetTimer=0;
+  let shownTarget=null,targetTimer=0,lastHP=null;
+  function damage(amount){
+    if(!(amount>0))return;
+    const number=$('damageAmount'),edge=$('hurt');
+    number.textContent='−'+amount;
+    for(const el of [number,edge])for(const anim of el.getAnimations())anim.cancel();
+    number.animate([{opacity:1},{opacity:1,offset:.7},{opacity:0}],650);
+    if(!matchMedia('(prefers-reduced-motion: reduce)').matches)
+      edge.animate([{opacity:.54},{opacity:.22,offset:.3},{opacity:0}],360);
+  }
   function vitals(hp,kills,deaths,target){
-    text('kills',kills);text('deaths',deaths);text('hp',Math.ceil(hp));$('hpbar').style.width=Math.max(0,hp)+'%';
+    text('kills',kills);text('deaths',deaths);
+    if(hp!==lastHP){
+      const value=Math.max(0,Math.min(100,hp)),trail=$('hpTrail');
+      const restored=lastHP===null||hp>lastHP;
+      trail.style.transitionDuration=restored?'0s':'';
+      trail.style.transitionDelay=restored?'0s':'';
+      trail.style.width=$('hpbar').style.width=value+'%';
+      if(restored){
+        for(const el of [$('damageAmount'),$('hurt')])for(const anim of el.getAnimations())anim.cancel();
+        text('damageAmount','');
+      }
+      $('hpbar').closest('.vitals').classList.toggle('low',value<=30);
+      text('hp',Math.ceil(value));lastHP=hp;
+    }
     if(target===shownTarget)return;
     clearTimeout(targetTimer);shownTarget=target;
     const health=$('targetHealth');
     health.hidden=!target;
     if(!target)return;
     text('targetName',target.name);text('targetReading',target.protected?'出生保护':target.hp+' HP');
+    text('targetDamage',!target.protected&&target.damage>0?'−'+target.damage:'');
     health.classList.toggle('protected',target.protected);
     $('targetFill').style.transform='scaleX('+target.hp/100+')';
     targetTimer=setTimeout(()=>{health.hidden=true;shownTarget=null;},Math.max(0,target.until*1000-performance.now()));
@@ -4862,7 +5013,6 @@ function drawMap(canvas, state, radar=false, map=window.Arena?.map){
   function hud(s){
     lastState=s;
     $('fieldHint').hidden=Boolean(s.controlsEngaged);
-    text('roomtag',roomLabel());
     const secs=Math.max(0,Math.ceil(s.secondsLeft));
     text('timer',String(Math.floor(secs/60)).padStart(2,'0')+':'+String(secs%60).padStart(2,'0'));
     vitals(s.hp,s.kills,s.deaths,s.targetFeedback);
@@ -4887,7 +5037,6 @@ function drawMap(canvas, state, radar=false, map=window.Arena?.map){
     marker.classList.toggle('confirmed',confirm>0);
     marker.style.opacity=confirm>0?String(Math.min(1,confirm*5)):String(Math.min(1,(s.hit||0)*14));
     $('elimination').classList.toggle('visible',confirm>0);
-    $('hurt').style.opacity=Math.min(.78,(s.hurt||0)*2);
     const spread=4.5-3*s.aim+(s.moving?1.5:0)*(1-s.aim)+(s.recoil||0)*(10-5*s.aim);
     cross.style.setProperty('--spread',Math.min(21,spread).toFixed(1)+'px');
     cross.style.opacity=reloading?'.28':s.hp>0?'1':'0';
@@ -4903,6 +5052,7 @@ function drawMap(canvas, state, radar=false, map=window.Arena?.map){
     const s=Game.state||lastState||{};
     if(phase==='paused'){
       overlay('FIELD MENU','战斗菜单',Arena.map.name+' · '+roomLabel());
+      refreshPresence();
       action('返回战斗',()=>Game.resume(),true,'resumeMatch');action('分享对局',share,false,'menuShare');
       action('另开对局',newMatch,false,'newMatch');action('地图简报',maps,false,'mapBtn');action('武器库',()=>armory(equipped),false,'navArm');
       action('操作指南',help,false,'help');
@@ -4919,13 +5069,14 @@ function drawMap(canvas, state, radar=false, map=window.Arena?.map){
     }
   }
   $('pause').onclick=()=>Game.pause();$('shareMatch').onclick=share;
-  LAN.onPeers(()=>{text('roomtag',roomLabel());if(document.body.dataset.screen==='paused')text('matchText',Arena.map.name+' · '+roomLabel())});
-  window.UI={screen,hud,scope,vitals,notify,feed,elimination};
+  LAN.onPeers(refreshPresence);
+  window.UI={screen,hud,scope,vitals,damage,notify,feed,elimination};
   window.addEventListener('resize',()=>{if($('largePlot'))refreshPreview();if($('gunPreview'))Weapon.preview($('gunPreview'),Number(body.querySelector('.chosen')?.dataset.gun??0))});
+  const seekMatchOnHost=target.quick;
   void enter(target).then(async()=>{
     if(!LAN.localOnly)return;
     const origin=await LAN.probeLocalHost();
-    if(origin&&LAN.localOnly)location.replace(LAN.playUrl(origin,LAN.room,LAN.map));
+    if(origin&&LAN.localOnly)location.replace(seekMatchOnHost?origin+'/':LAN.playUrl(origin,LAN.room,LAN.map));
   });
 })();
 </script>

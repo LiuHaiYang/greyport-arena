@@ -11,7 +11,8 @@
   function route() {
     const params=new URL(location.href).searchParams;
     const map=params.get('map');
-    return {room:params.get('room')?.trim()||defaultRoom,map:validMap(map)?map:'dock'};
+    const room=params.get('room')?.trim();
+    return {room:room||defaultRoom,map:validMap(map)?map:'dock',quick:!room&&!validMap(map)};
   }
   function playUrl(origin, room=defaultRoom, map='dock') {
     const address=new URL('/',origin);
@@ -36,7 +37,7 @@
     try {
       const r=await fetch(origin+'/api/identity',{signal:abort.signal,credentials:'omit',cache:'no-store',redirect:'error'});
       const info=r.ok?await r.json():null;
-      return info?.game==='greyport-arena'&&info.directPlay===4?origin:'';
+      return info?.game==='greyport-arena'&&info.directPlay===5?origin:'';
     } catch { return ''; }
     finally { clearTimeout(timeout); }
   }
@@ -223,7 +224,7 @@
     },
     createRoom(room, name, map = 'dock') { return begin('create', { room, name, map }); },
     joinRoom(room,name) { return begin('join', { room, name, map:'dock' }); },
-    enterRoom(room,name,map='dock') { return begin('enter', { room, name, map }); },
+    enterRoom(room,name,map='dock',quick=false) { return begin('enter', { room, name, map, quick }); },
     leave,
     onMessage(fn) {
       const stop = subscribe('game', fn);
@@ -237,7 +238,8 @@
     onClose(fn) { return subscribe('close', fn); },
     send(body, to = null) {
       const current = session;
-      if (!current || !body || typeof body !== 'object' || current.peers.length === 1) return;
+      if (!current || current.localOnly || !body || typeof body !== 'object') return;
+      if (current.peers.length===1 && !(current.role==='host' && body.t==='state' && body.end)) return;
       // While a POST is pending, only the newest consecutive position or world snapshot
       // matters. Keep actions, targeted replies and their ordering intact.
       const last=current.outgoing[current.outgoing.length-1];
