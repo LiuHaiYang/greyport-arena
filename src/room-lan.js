@@ -36,7 +36,7 @@
     try {
       const r=await fetch(origin+'/api/identity',{signal:abort.signal,credentials:'omit',cache:'no-store',redirect:'error'});
       const info=r.ok?await r.json():null;
-      return info?.game==='greyport-arena'&&info.directPlay===1?origin:'';
+      return info?.game==='greyport-arena'&&info.directPlay===2?origin:'';
     } catch { return ''; }
     finally { clearTimeout(timeout); }
   }
@@ -238,6 +238,13 @@
     send(body, to = null) {
       const current = session;
       if (!current || !body || typeof body !== 'object' || current.peers.length === 1) return;
+      // While a POST is pending, only the newest consecutive position or world snapshot
+      // matters. Keep actions, targeted replies and their ordering intact.
+      const last=current.outgoing[current.outgoing.length-1];
+      if(last && (body.t==='pose'||body.t==='state') && last.body.t===body.t && last.to===to) {
+        last.body=body;
+        return;
+      }
       if (current.outgoing.length >= 256) {
         lost(current, '网络拥堵，连接已中断，请重新加入房间。');
         return;

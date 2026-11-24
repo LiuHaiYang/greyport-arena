@@ -236,7 +236,7 @@ public static class GreyportLobby
                         IPAddress.IsLoopback(peerEndpoint.Address);
                     string cors=fileProbe ? "Access-Control-Allow-Origin: null\r\nAccess-Control-Allow-Methods: GET\r\nAccess-Control-Allow-Private-Network: true\r\nVary: Origin\r\n" : "";
                     if(verb=="OPTIONS" && !fileProbe)throw new Problem(403,"不允许跨站访问。");
-                    byte[] identity=verb=="GET"?Utf8.GetBytes("{\"game\":\"greyport-arena\",\"directPlay\":1}"):new byte[0];
+                    byte[] identity=verb=="GET"?Utf8.GetBytes("{\"game\":\"greyport-arena\",\"directPlay\":2}"):new byte[0];
                     Reply(stream,200,"application/json; charset=utf-8",identity,cors);return;
                 }
                 if(verb=="GET"){
@@ -364,7 +364,7 @@ public static class GreyportLobby
                 var data=Json.DeserializeObject(reader.ReadToEnd()) as Dictionary<string,object>;
                 object version;
                 return data!=null && Field(data,"game")=="greyport-arena" &&
-                    data.TryGetValue("directPlay",out version) && Object.Equals(version,1);
+                    data.TryGetValue("directPlay",out version) && Object.Equals(version,2);
             }
         }catch(WebException){return false;}catch(IOException){return false;}catch(ArgumentException){return false;}
         catch(InvalidOperationException){return false;}
@@ -387,7 +387,7 @@ public static class GreyportLobby
                 if(browse)OpenBrowser("http://127.0.0.1:"+port+path);
                 Console.WriteLine("已连接本机正在运行的对局服务。");return null;
             }
-            throw new InvalidOperationException("端口 "+port+" 已被其他程序使用。请先关闭占用端口的程序。",ex);
+            throw new InvalidOperationException("端口 "+port+" 正在使用中。若正在运行旧版灰港，请在原 PowerShell 窗口按回车结束联机，再运行新版启动命令。",ex);
         }
     }
     static int Main(string[] args) {

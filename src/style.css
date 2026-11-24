@@ -29,6 +29,14 @@ dialog,.matchcard{color:var(--fg);border:1px solid #596056;background:#1d2421;bo
 #marker i:nth-child(4){transform:rotate(315deg)}
 #marker.confirmed{color:#ff9b64}
 #marker.confirmed i{height:8px}
+#targetHealth{position:absolute;top:calc(50% + 58px);left:50%;transform:translateX(-50%);width:126px;padding:5px 8px;background:#14201ce6;color:#faf9ed;pointer-events:none;font-size:11px}
+#targetHealth[hidden]{display:none}
+#targetHealth>div:first-child{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
+#targetName{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#targetReading{font-variant-numeric:tabular-nums;white-space:nowrap}
+.targetTrack{height:3px;margin-top:4px;background:#56605a}
+#targetFill{display:block;height:100%;background:#ffc294;transform-origin:left}
+#targetHealth.protected #targetFill{background:#a6d9f4}
 #elimination{position:absolute;left:50%;top:calc(50% + 31px);display:flex;gap:7px;align-items:center;max-width:230px;padding:4px 12px;border-bottom:1px solid #ffc093a8;background:linear-gradient(90deg,transparent,#18201baf 16%,#18201baf 84%,transparent);opacity:0;transform:translate(-50%,4px);transition:opacity .14s,transform .14s;pointer-events:none;text-shadow:0 1px 3px #000}
 #elimination.visible{opacity:1;transform:translate(-50%,0)}
 #elimination span{color:#ffaf77;font-size:11px;white-space:nowrap}

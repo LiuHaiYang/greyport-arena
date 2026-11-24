@@ -155,13 +155,26 @@
   }
   function feed(message){const line=document.createElement('div');line.textContent=message;const feed=$('killfeed');feed.append(line);if(feed.children.length>4)feed.firstChild.remove();setTimeout(()=>line.remove(),3200)}
   function elimination(name){text('defeatedName',name)}
+  let shownTarget=null,targetTimer=0;
+  function vitals(hp,kills,deaths,target){
+    text('kills',kills);text('deaths',deaths);text('hp',Math.ceil(hp));$('hpbar').style.width=Math.max(0,hp)+'%';
+    if(target===shownTarget)return;
+    clearTimeout(targetTimer);shownTarget=target;
+    const health=$('targetHealth');
+    health.hidden=!target;
+    if(!target)return;
+    text('targetName',target.name);text('targetReading',target.protected?'出生保护':target.hp+' HP');
+    health.classList.toggle('protected',target.protected);
+    $('targetFill').style.transform='scaleX('+target.hp/100+')';
+    targetTimer=setTimeout(()=>{health.hidden=true;shownTarget=null;},Math.max(0,target.until*1000-performance.now()));
+  }
   function hud(s){
     lastState=s;
     $('fieldHint').hidden=Boolean(s.controlsEngaged);
     text('roomtag',roomLabel());
     const secs=Math.max(0,Math.ceil(s.secondsLeft));
     text('timer',String(Math.floor(secs/60)).padStart(2,'0')+':'+String(secs%60).padStart(2,'0'));
-    text('kills',s.kills);text('deaths',s.deaths);text('hp',Math.ceil(s.hp));$('hpbar').style.width=Math.max(0,s.hp)+'%';
+    vitals(s.hp,s.kills,s.deaths,s.targetFeedback);
     text('ammo',s.ammo);text('reserve',s.reserve);text('weapLabel',guns[s.weapon].name);
     const automatic=s.fireMode==='auto', reloading=s.reload>=0;
     text('fireModeLabel',automatic?'连发':'单发');
@@ -207,7 +220,7 @@
   }
   $('pause').onclick=()=>Game.pause();$('shareMatch').onclick=share;
   LAN.onPeers(()=>{text('roomtag',roomLabel());if(document.body.dataset.screen==='paused')text('matchText',Arena.map.name+' · '+roomLabel())});
-  window.UI={screen,hud,notify,feed,elimination};
+  window.UI={screen,hud,vitals,notify,feed,elimination};
   window.addEventListener('resize',()=>{if($('largePlot'))refreshPreview();if($('gunPreview'))Weapon.preview($('gunPreview'),Number(body.querySelector('.chosen')?.dataset.gun??0))});
   void enter(target).then(async()=>{
     if(!LAN.localOnly)return;

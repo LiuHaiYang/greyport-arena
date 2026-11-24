@@ -14,16 +14,24 @@
   let round = null, self = null, players = new Map(), effects = [], listeners = [];
   let phase = 'menu', canvas, overlay, ready = false, frame = 0, ticker = 0;
   let lastDraw = 0, lastTick = 0, lastHUD = 0, nextSync = 0, nextHello = 0;
+  let lastMovement=0;
   let fireHeld = false, aimHeld = false, jumpPressed = false;
   let muzzle = 0, hurt = 0, hit = 0, killConfirm = 0, aim = 0, bob = 0, walking = false, running = false;
   let clientReady = false, clientShot = 0, handoff = false, drag = null, audio, noise, muted = false;
   let controlsEngaged = false;
+  let targetFeedback = null;
   let shotSerial = 0, switchedAt = -9, stride = 0, markSeed = 0, marks = [];
   const ui = (method, ...args) => window.UI?.[method]?.(...args);
   const map = () => window.Arena.map;
   const authority = () => round?.mode === 'host';
   const connected = () => round && window.LAN?.active;
   const send = (obj, to) => { if (connected()) window.LAN.send(obj, to); };
+  function currentTarget() {
+    return self?.hp>0 && phase==='playing' && targetFeedback && now()<targetFeedback.until ? targetFeedback : null;
+  }
+  function refreshVitals() {
+    ui('vitals',self.hp,self.kills,self.deaths,currentTarget());
+  }
   function screen(next) {
     if (phase === next) return;
     phase = next;
@@ -108,7 +116,7 @@
       reloadAt:0,reloadEmpty:false,reloadCue:-1,flashUntil:0,
       modes:['auto','auto','semi'],triggerHeld:false,pressUntil:-1,lastShotAt:-10,shotsFired:0,chain:0,
       kickUp:0,kickUpSpeed:0,kickSide:0,kickSideSpeed:0,kickTime:0,deathYaw:0,deathFloor:0,
-      destX: null, destZ: null, destYaw: 0, destFeet: 0, spawnNo: 0
+      poses:[], poseAt:null, spawnNo:0
     };
   }
   function spawn(p, first = false) {
@@ -122,11 +130,13 @@
     p.x = s.x; p.z = s.z; p.feet = p.vy = 0; p.grounded = true;
     p.yaw = s.yaw ?? (first ? -.55 : Math.atan2(-p.x, p.z));
     p.pitch = 0; p.hp = 100; p.respawnAt = p.reloadAt = 0; p.spawnNo++;
+    p.poses.length=0;p.poseAt=null;
+    rememberPose(p,round.time);
     p.reloadCue=-1; p.reloadEmpty=false; p.triggerHeld=false; p.pressUntil=-1; p.lastShotAt=-10; p.shotsFired=0;
     resetKick(p);
     p.mags = guns.map(g => g.cap); p.stock = guns.map(g => g.reserve);
     p.nextShot = round.time + .26; p.safeUntil = round.time + 2.2;
-    if (p === self) { hurt = muzzle = aim = stride = 0; clearInput(); }
+    if (p === self) { lastMovement=now();hurt = muzzle = aim = stride = 0; targetFeedback = null; clearInput(); refreshVitals(); }
   }
   function overlaps(x, z, w, r = radius) {
     const dx = Math.max(Math.abs(x - w.x) - w.w / 2, 0);
@@ -184,6 +194,15 @@
     jumpPressed = false;
     vertical(self, dt);
   }
+  function advanceLocalMovement(time) {
+    // Physics runs even if no frame is painted. A frame between ticks consumes only
+    // the remaining elapsed time, so a high-refresh local camera stays smooth.
+    const elapsed=clamp(time-lastMovement,0,.10);
+    lastMovement=time;
+    if (phase!=='playing' || !clientReady || self.hp<=0 || !elapsed)return;
+    const steps=Math.ceil(elapsed*60);
+    for(let i=0;i<steps;i++)walkLocal(elapsed/steps);
+  }
 
   // Slab intersection uses the same solid boxes as player collision.
   function rayBox(o, d, lo, hi, limit) {
@@ -199,6 +218,31 @@
       if (near > far) return Infinity;
     }
     return near;
+  }
+  // In the operator's own coordinates the front of the vest and the support
+  // hand face -Z. Separating the shoulders from the head also keeps a shot
+  // through the top of the vest at ordinary body damage.
+  const bodyRegions = [
+    [[-.27,.76,-.23],[.28,1.48,.28]],    // vest, pack and belt
+    [[-.31,1.04,-.28],[.36,1.46,.13]],   // shoulders, upper arms
+    [[-.14,1.12,-.50],[.18,1.40,-.18]],  // forearms and support hand
+    [[-.28,.00,-.30],[.28,.90,.26]]      // trousers and boots
+  ];
+  const headRegion = [[-.145,1.47,-.21],[.20,1.82,.13]];
+  function hitOperator(origin, direction, pose, limit) {
+    const cs=Math.cos(pose.yaw), sn=Math.sin(pose.yaw);
+    const x=origin[0]-pose.x, z=origin[2]-pose.z;
+    const localOrigin=[x*cs+z*sn,origin[1]-pose.feet,z*cs-x*sn];
+    const localRay=[direction[0]*cs+direction[2]*sn,direction[1],direction[2]*cs-direction[0]*sn];
+    const head=rayBox(localOrigin,localRay,headRegion[0],headRegion[1],limit);
+    let body=Infinity;
+    for (const [lo,hi] of bodyRegions) {
+      body=Math.min(body,rayBox(localOrigin,localRay,lo,hi,Math.min(body,limit)));
+    }
+    return {distance:Math.min(head,body),critical:head<body};
+  }
+  function eyeBob(p) {
+    return p===self ? (walking ? Math.sin(bob)*.024 : 0) : p.eyeBob || 0;
   }
   function wallDistance(o, d, max, hitSurface) {
     let dist = max;
@@ -235,10 +279,12 @@
       const fallen=players.get(e.target);
       if (fallen && fallen.spawnNo===e.spawn) {
         fallen.hp=0; fallen.respawnAt=e.at+respawnSeconds; fallen.deathYaw=e.yaw;
-        fallen.x=fallen.destX=e.x; fallen.z=fallen.destZ=e.z; fallen.feet=fallen.destFeet=e.feet;
+        fallen.x=e.x; fallen.z=e.z; fallen.feet=e.feet;
+        fallen.poses.length=0;
         fallen.deathFloor=e.floor;
         fallen.reloadAt=0; fallen.triggerHeld=false; fallen.pressUntil=-1;
         checkLife();
+        refreshVitals();
       }
     }
     if (e.kind === 'shot') {
@@ -252,6 +298,15 @@
       }
       if (e.victim === self.id) { hurt = .38; tone(95, 48, .11, .11); }
       if (e.victim && shooter === self) { hit = .19; tone(900, 650, .045, .065); }
+      const struck = players.get(e.victim || e.protectedId);
+      if (struck && struck.spawnNo === e.victimSpawn && Number.isFinite(e.hpAfter)) {
+        // A shot and its final health arrive together, before the next periodic snapshot.
+        if (!authority() && e.victim) struck.hp = Math.min(struck.hp, e.hpAfter);
+        if (shooter === self) targetFeedback = {
+          name:struck.name, hp:e.hpAfter, protected:Boolean(e.protectedId), until:now()+1.15
+        };
+        if (struck === self || shooter === self) refreshVitals();
+      }
       const [x,y,z] = e.to;
       effects.push({x,y,z,ax:e.from[0],ay:e.from[1],az:e.from[2],type:'trace',life:.075});
       if (e.impact && !e.victim) effects.push({x,y,z,type:'impact',life:.22});
@@ -364,43 +419,96 @@
       shotSerial++; muzzle=.065; blast(i,1);
       if (!authority()) return;
     }
-    const jitter=gun.spread*(ads ? .33 : 1)*(1+p.chain*.11);
+    // An isolated tap follows the sight. Spread builds during an uninterrupted burst.
+    const jitter=gun.spread*(ads ? .33 : 1)*Math.min(1,p.chain/3);
     const yaw=p.yaw+yawKick+(Math.random()-.5)*jitter*2;
     const pitch=p.pitch+pitchKick+(Math.random()-.5)*jitter*2;
     const cp = Math.cos(pitch), d = [Math.sin(yaw)*cp,Math.sin(pitch),-Math.cos(yaw)*cp];
-    const o = [p.x,p.feet+eyes,p.z];
+    const o = [p.x,p.feet+eyes+eyeBob(p),p.z];
     const surface = {}, barrier = wallDistance(o, d, 80, surface);
+    // Use the same history as the remote actor renderer. The shooter reports the
+    // host-clock instant it was displaying, never a victim or a damage value.
+    const seenAt=p===self ? localShotTime() : round.time-(p.sightDelay??interpolationDelay);
     let distance = barrier, victim = null, critical = false;
     for (const target of players.values()) {
       if (target === p || target.hp <= 0) continue;
-      const f = target.feet, x = target.x, z = target.z;
-      const head = rayBox(o,d,[x-.225,f+1.37,z-.225],[x+.225,f+1.82,z+.225],distance);
-      const body = rayBox(o,d,[x-.35,f+.06,z-.31],[x+.35,f+1.38,z+.31],distance);
-      if (Math.min(head, body) < distance) {
-        distance = Math.min(head,body); victim = target; critical = head < body;
+      const impact=hitOperator(o,d,visiblePoseAt(target,seenAt),distance);
+      if (impact.distance < distance) {
+        distance=impact.distance; victim=target; critical=impact.critical;
       }
     }
     const damaged = victim && victim.safeUntil <= round.time;
-    const from = [o[0]+d[0]*.45+Math.cos(yaw)*.13,o[1]-.13,o[2]+d[2]*.45+Math.sin(yaw)*.13];
-    const to=o.map((v,j)=>v+d[j]*distance);
-    echo({kind:'shot',at:time,serial:p.shotsFired,source:p.id,victim:damaged ? victim.id : null,from,to,
-      impact:distance<80,normal:!victim && distance<80 ? impactNormal(to,surface.wall) : null});
     if (damaged) {
       const damage = Math.round(gun.damage * (critical ? 1.7 : 1));
       victim.hp = Math.max(0,victim.hp-damage);
-      if (!victim.hp) {
-        const deathTime = round.time + Math.max(0, now() - lastTick);
-        p.kills++; victim.deaths++; victim.respawnAt = deathTime + respawnSeconds; victim.reloadAt = 0;
-        victim.deathYaw=Math.atan2(d[0],-d[2]);
-        victim.deathFloor=floorBelow(victim);
-        echo({kind:'frag',source:p.id,killer:p.name,victim:victim.name,target:victim.id,
-          at:deathTime,yaw:victim.deathYaw,spawn:victim.spawnNo,x:victim.x,z:victim.z,feet:victim.feet,floor:victim.deathFloor});
-      }
+    }
+    const from = [o[0]+d[0]*.45+Math.cos(yaw)*.13,o[1]-.13,o[2]+d[2]*.45+Math.sin(yaw)*.13];
+    const to=o.map((v,j)=>v+d[j]*distance);
+    echo({kind:'shot',at:time,serial:p.shotsFired,source:p.id,victim:damaged ? victim.id : null,from,to,
+      protectedId:victim && !damaged ? victim.id : null,victimSpawn:victim?.spawnNo,hpAfter:victim?.hp,
+      impact:distance<80,normal:!victim && distance<80 ? impactNormal(to,surface.wall) : null});
+    if (damaged && !victim.hp) {
+      const deathTime = round.time + Math.max(0, now() - lastTick);
+      p.kills++; victim.deaths++; victim.respawnAt = deathTime + respawnSeconds; victim.reloadAt = 0;
+      victim.deathYaw=Math.atan2(d[0],-d[2]);
+      victim.deathFloor=floorBelow(victim);
+      echo({kind:'frag',source:p.id,killer:p.name,victim:victim.name,target:victim.id,
+        at:deathTime,yaw:victim.deathYaw,spawn:victim.spawnNo,x:victim.x,z:victim.z,feet:victim.feet,floor:victim.deathFloor});
     }
   }
 
+  const interpolationDelay=.10;
+  const maxRewind=.35;
+  function localShotTime() {
+    const visibleFrame=round.presentedAt ?? renderTime();
+    return Math.max(visibleFrame,renderTime()+interpolationDelay-maxRewind);
+  }
+  function renderTime() {
+    const clock=authority() ? round.time+Math.max(0,now()-lastTick) :
+      (round.hostOffset==null ? round.time : now()+round.hostOffset);
+    return Math.max(0,clock-interpolationDelay);
+  }
+  function rememberPose(p,stamp) {
+    const history=p.poses;
+    let last=history[history.length-1];
+    if(!Number.isFinite(stamp) || (last && stamp<last.stamp))return;
+    const sample={stamp,time:stamp,x:p.x,z:p.z,feet:p.feet,yaw:p.yaw,pitch:p.pitch};
+    if(last && stamp===last.stamp){
+      if(p.x===last.x && p.z===last.z && p.feet===last.feet && p.yaw===last.yaw && p.pitch===last.pitch)return;
+      history.pop();last=history[history.length-1];
+    }
+    if(last){
+      let start=last.time;
+      // After a long interruption the previous pose has already been shown at rest.
+      // Start the recovery at that held pose and cap its visual catch-up speed.
+      const playhead=renderTime();
+      if(playhead>start+.025) {
+        start=playhead;
+        history.push({...last,time:start});
+      }
+      sample.time=Math.max(stamp,start+Math.hypot(p.x-last.x,p.z-last.z)/12);
+    }
+    history.push(sample);
+    while(history.length>2 && history[1].time<stamp-1.2)history.shift();
+  }
+  function visiblePoseAt(p,time) {
+    const history=p.poses,n=history.length;
+    if(!n || !Number.isFinite(time))return p;
+    if(time<=history[0].time)return history[0];
+    if(time>=history[n-1].time)return history[n-1];
+    let lo=0,hi=n-1;
+    while(hi-lo>1){
+      const mid=(lo+hi)>>1;
+      if(history[mid].time<=time)lo=mid;else hi=mid;
+    }
+    const a=history[lo],b=history[hi],f=(time-a.time)/(b.time-a.time);
+    const angle=b.yaw-a.yaw;
+    return {x:a.x+(b.x-a.x)*f,z:a.z+(b.z-a.z)*f,feet:a.feet+(b.feet-a.feet)*f,
+      yaw:a.yaw+Math.atan2(Math.sin(angle),Math.cos(angle))*f,pitch:a.pitch+(b.pitch-a.pitch)*f};
+  }
   function pack(p) {
     return {id:p.id,name:p.name,x:p.x,z:p.z,f:p.feet,a:p.yaw,b:p.pitch,w:p.weapon,
+      mt:p.poses.length?p.poses[p.poses.length-1].stamp:round.time,
       hp:p.hp,k:p.kills,d:p.deaths,spawn:p.spawnNo,safe:p.safeUntil,resp:p.respawnAt,
       reload:p.reloadAt,empty:p.reloadEmpty,modes:p.modes,shot:p.lastShotAt,serial:p.shotsFired,
       fall:p.deathYaw,floor:p.deathFloor,ammo:p.mags,stock:p.stock,ack:p.ack||0};
@@ -410,11 +518,20 @@
   }
   function applySnapshot(msg) {
     const listed=new Set(msg.actors.map(a=>a.id));
-    if (!listed.has(self.id)) return;
-    round.time=Math.max(round.time,msg.time); round.remaining=msg.remaining; lastTick=now();
+    if (!listed.has(self.id) || !Number.isFinite(msg.time) || msg.time<round.lastSnapshot) return;
+    const received=now(),offset=msg.time-received;
+    if(round.hostOffset==null)round.hostOffset=offset;
+    else{
+      // A batch of late snapshots must not rewind the clock driving already-displayed movement.
+      const elapsed=Math.max(0,received-round.snapshotReceived);
+      round.hostOffset+=clamp(offset-round.hostOffset,-elapsed*.01,elapsed*.1);
+    }
+    round.lastSnapshot=msg.time;round.snapshotReceived=received;
+    round.time=Math.max(round.time,msg.time); round.remaining=msg.remaining; lastTick=received;
     for (const a of msg.actors) {
       let p=players.get(a.id);
       if (!p) { p=makePlayer(a.id,a.name); players.set(p.id,p); }
+      if(clientReady && a.spawn<p.spawnNo)continue;
       const fresh=!clientReady || p.spawnNo!==a.spawn;
       p.name=a.name; p.kills=a.k; p.deaths=a.d; p.safeUntil=a.safe;
       p.hp=a.hp; p.respawnAt=a.resp; p.spawnNo=a.spawn; p.deathYaw=a.fall; p.deathFloor=a.floor;
@@ -429,14 +546,16 @@
         p.reloadEmpty=a.empty; p.modes=a.modes.slice();
       }
       if (p!==self) {
-        p.destX=a.x; p.destZ=a.z; p.destFeet=a.f; p.destYaw=a.a; p.pitch=a.b;
+        p.x=a.x;p.z=a.z;p.feet=a.f;p.yaw=a.a;p.pitch=a.b;
+        if(fresh || !p.hp)p.poses.length=0;
+        if(p.hp)rememberPose(p,a.mt??msg.time);
         p.lastShotAt=a.shot; p.shotsFired=a.serial; p.flashUntil=Math.max(fresh?0:p.flashUntil,a.shot+.075);
       }
       if (fresh) {
         p.x=a.x; p.z=a.z; p.yaw=a.a; p.pitch=a.b; p.feet=a.f; p.vy=0;
         if (p===self) {
           p.triggerHeld=false; resetKick(p); p.shotsFired=a.serial; p.lastShotAt=a.shot;
-          muzzle=hurt=0; clearInput();
+          lastMovement=now();muzzle=hurt=0; targetFeedback=null; clearInput();
         }
       }
     }
@@ -444,9 +563,12 @@
     clientReady=true;
     if (msg.end) endRound();
     else checkLife();
+    refreshVitals();
   }
   function pose(p,m) {
     if (!p.hp || ![m.x,m.z,m.yaw,m.pitch,m.feet].every(Number.isFinite)) return;
+    if (Number.isFinite(m.seenAt)) p.sightDelay=clamp(round.time-m.seenAt,0,maxRewind);
+    if (Number.isFinite(m.eyeBob)) p.eyeBob=clamp(m.eyeBob,-.024,.024);
     const dt=clamp(now()-(p.poseAt ?? now()),0,.8);
     const dx=m.x-p.x, dz=m.z-p.z, len=Math.hypot(dx,dz);
     const step=Math.min(1, (7*dt+.10)/(len || 1));
@@ -455,6 +577,7 @@
     p.feet=clamp(p.feet,0,3.5);
     move(p,dx*step,dz*step);
     p.yaw=m.yaw; p.pitch=clamp(m.pitch,-1.3,1.3); p.ads=!!m.ads; p.poseAt=now();
+    rememberPose(p,round.time+Math.max(0,p.poseAt-lastTick));
   }
   function wireNetwork() {
     const lan=window.LAN;
@@ -504,7 +627,8 @@
     }));
   }
   function poseMessage() {
-    return {x:self.x,z:self.z,yaw:self.yaw,pitch:self.pitch,feet:self.feet,ads:aimHeld,spawn:self.spawnNo};
+    return {x:self.x,z:self.z,yaw:self.yaw,pitch:self.pitch,feet:self.feet,ads:aimHeld,spawn:self.spawnNo,
+      seenAt:localShotTime(),eyeBob:eyeBob(self)};
   }
   function hello() {
     send({t:'hello',name:self.name,weapon:self.weapon},window.LAN.hostId);
@@ -532,6 +656,8 @@
       if (round.started || round.mode==='join') round.remaining=Math.max(0,round.remaining-elapsed);
     }
     if (!round.remaining && authority()) { endRound(); return; }
+    advanceLocalMovement(n);
+    if(authority() && self.hp>0)rememberPose(self,round.time);
     for (const p of players.values()) {
       if (p.hp<=0) {
         if (authority() && round.time>=p.respawnAt) spawn(p);
@@ -559,7 +685,7 @@
   function actorFeet(p,age) {
     return age<0?p.feet:Math.max(p.deathFloor,p.feet-9.25*age*age);
   }
-  function viewState() {
+  function viewState(displayTime=renderTime()) {
     const g=guns[self.weapon], time=round.time;
     const reload=reloadProgress(self,time);
     const alive=self.hp>0, secondsToSpawn=alive ? 0 : clamp(self.respawnAt-time,0,respawnSeconds);
@@ -567,17 +693,19 @@
     const fall=clamp(deathAge/.70,0,1),deathDrop=fall*fall*(3-2*fall)*.95;
     const actors=[...players.values()].filter(p=>p!==self).map(p=>{
       const age=p.hp>0?-1:Math.max(0,time-p.respawnAt+respawnSeconds);
-      return {id:p.id,name:p.name,x:p.x,y:actorFeet(p,age),z:p.z,yaw:p.yaw,pitch:p.pitch,team:'enemy',alive:p.hp>0,
+      const pose=p.hp>0?visiblePoseAt(p,displayTime):p;
+      return {id:p.id,name:p.name,x:pose.x,y:p.hp>0?pose.feet:actorFeet(p,age),z:pose.z,yaw:pose.yaw,pitch:pose.pitch,team:'enemy',alive:p.hp>0,
         flash:p.hp>0 && p.flashUntil>time,hp:p.hp,weapon:p.weapon,spawnNo:p.spawnNo,fireMode:p.modes[p.weapon],
         reload:reloadProgress(p,time),reloadEmpty:p.reloadEmpty,shotSerial:p.shotsFired,shotAge:Math.max(0,time-p.lastShotAt),
         deathAge:age,deathYaw:p.deathYaw};
     });
-    return {x:self.x,z:self.z,y:actorFeet(self,deathAge)+eyes-deathDrop+(walking?Math.sin(bob)*.024:0),
+    return {x:self.x,z:self.z,y:actorFeet(self,deathAge)+eyes-deathDrop+eyeBob(self),
       yaw:self.yaw+self.kickSide*.020,pitch:self.pitch+self.kickUp*.022-deathDrop*.095,weapon:self.weapon,weaponName:g.name,ammo:self.mags[self.weapon],
       reserve:self.stock[self.weapon],maxAmmo:g.cap,hp:self.hp,kills:self.kills,deaths:self.deaths,
       secondsLeft:Math.max(0,Math.ceil(round.remaining)),respawnLeft:Math.ceil(secondsToSpawn),
       invulnerable:self.safeUntil>time,time,recoil:clamp(self.kickUp,0,1.5),recoilSide:clamp(self.kickSide,-1,1),
       flash:muzzle>0?muzzle/.065:0,hit,hurt,aim,killConfirm:clamp(killConfirm/.48,0,1),deathAge,
+      targetFeedback:currentTarget(),
       fireMode:self.modes[self.weapon],canToggleFireMode:self.weapon!==2,reloadEmpty:self.reloadEmpty,
       reloadStage:reload<0?'':reload<.47?'取匣':reload<.86?'装匣':'就绪',
       bob,moving:walking,sprinting:running,reload,shotSerial,switchProgress:clamp(1-(time-switchedAt)/.22,0,1),
@@ -590,16 +718,7 @@
     frame=requestAnimationFrame(render);
     const n=now(), dt=clamp(n-lastDraw,0,.065);
     lastDraw=n;
-    if (phase==='playing' && self.hp>0 && clientReady) {
-      walkLocal(dt);
-    }
-    if (!authority()) {
-      for (const p of players.values()) if (p!==self && p.destX!==null) {
-        const f=1-Math.exp(-dt*19);
-        p.x+=(p.destX-p.x)*f; p.z+=(p.destZ-p.z)*f; p.feet+=(p.destFeet-p.feet)*f;
-        p.yaw+=Math.atan2(Math.sin(p.destYaw-p.yaw),Math.cos(p.destYaw-p.yaw))*f;
-      }
-    }
+    advanceLocalMovement(n);
     for (const fx of effects) fx.life-=dt;
     effects=effects.filter(fx=>fx.life>0);
     for (const m of marks) m.life=Math.max(0,m.maxLife-(round.time-m.born));
@@ -608,8 +727,9 @@
     killConfirm=Math.max(0,killConfirm-dt);
     hurt=Math.max(0,hurt-dt); hit=Math.max(0,hit-dt);
     aim+=((aimHeld && self.hp>0 && !self.reloadAt ? 1 : 0)-aim)*(1-Math.exp(-dt*15));
-    const state=viewState();
+    const displayTime=renderTime(), state=viewState(displayTime);
     window.Arena.draw(state);
+    round.presentedAt=displayTime;
     if (window.Weapon) window.Weapon.draw(overlay,state);
     if (n-lastHUD>1/30) { ui('hud',state); lastHUD=n; }
   }
@@ -639,7 +759,7 @@
   }
   function resume() {
     if (!round || round.ended) return;
-    clearInput(); lastDraw=now();
+    clearInput(); lastDraw=lastMovement=now();
     screen(self.hp>0 ? 'playing' : 'dead');
     controlsEngaged=true;
     wakeAudio(); requestMouse();
@@ -655,6 +775,7 @@
     listeners=[]; players=new Map(); effects=[]; marks=[]; markSeed=stride=0; round=null; self=null;
     frame=ticker=0; clearInput(); controlsEngaged=handoff=false; clientShot=shotSerial=0; switchedAt=-9;
     muzzle=hurt=hit=killConfirm=aim=bob=0;
+    targetFeedback=null;
   }
   function quit() {
     const network=connected();
@@ -680,7 +801,7 @@
     self.weapon=Number.isInteger(options.weapon) && guns[options.weapon] ? options.weapon : 0;
     players.set(self.id,self); spawn(self,true);
     clientReady=mode!=='join';
-    nextSync=0; lastTick=lastDraw=now(); lastHUD=0;
+    nextSync=0; lastTick=lastDraw=lastMovement=now(); lastHUD=0;
     wireNetwork();
     if (mode==='join') hello();
     const startPaused = mode === 'host' && options.startPaused === true;
