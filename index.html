@@ -12,6 +12,19 @@ dialog,.matchcard{color:var(--fg);border:1px solid #596056;background:#1d2421;bo
 .mapdesc{margin:13px 0}.legend{font-size:12px!important;margin-top:9px}.legend span{color:#e5aa79}
 .field select{font:inherit;background:#171e1a;border:1px solid #4e584c;color:var(--fg);padding:9px 10px}.field select:focus-visible{outline:2px solid var(--orange);outline-offset:2px}
 .munition{min-width:120px}
+#scopeView{position:fixed;inset:0;display:grid;place-items:center;pointer-events:none;overflow:hidden}
+#scopeLens{position:relative;width:87vmin;height:87vmin;border-radius:50%;
+  background:radial-gradient(circle,transparent 56%,rgba(17,31,33,.025) 75%,rgba(9,20,23,.17) 91%,rgba(6,15,18,.46) 98%,rgba(3,9,10,.84) 100%);
+  box-shadow:inset 0 0 0 1px #a5bfba99,0 0 0 2px #171d1f,0 0 0 4px #414a48,0 0 0 6px #151919,0 0 0 7px #303737,0 0 0 150vmax #0a0d0efc}
+.scopeReticle{position:absolute;inset:0;width:100%;height:100%;border-radius:50%;overflow:hidden}
+.reticleLine{fill:none;stroke:#1a1917;stroke-width:1.25;vector-effect:non-scaling-stroke;filter:drop-shadow(0 .5px .5px #f2efe599)}
+.reticlePosts{fill:#171815;stroke:#ddd8c466;stroke-width:.7;vector-effect:non-scaling-stroke}
+.reticleDot{fill:#ff965f;stroke:#2d1911;stroke-width:1;vector-effect:non-scaling-stroke}
+.scopeReadout{position:absolute;left:68%;bottom:12%;transform:translateX(-50%);display:flex;align-items:center;gap:7px;padding:1px 6px;border-radius:2px;background:#0e1718bf;color:#ecebd9}
+.scopeReadout strong{font:700 clamp(14px,2.5vmin,22px)/1.16 var(--display);letter-spacing:.04em}
+.scopeReadout kbd,#opticSetting kbd{font:10px var(--mono);padding:0 3px;box-shadow:none;border:1px solid #919b8e;color:#e4e9de;background:#29342f}
+#opticSetting{display:flex;align-items:center;justify-content:flex-end;gap:6px;margin-top:3px}
+#opticSetting span,#opticSetting strong{font:600 12px var(--sans);color:#e6e9d9}
 #weaponSlots{display:flex;justify-content:flex-end;gap:8px;margin-top:7px}
 #weaponSlots small{font:11px var(--sans);color:#ced4c9;border-bottom:2px solid transparent;padding-bottom:2px}
 #weaponSlots .equipped{color:#ffd0a0;border-color:var(--orange)}
@@ -202,7 +215,7 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Web.Script.Serialization;
 
-public static class GreyportLobby_985471761739
+public static class GreyportLobby_cb3c6b463a6c
 {
     const int Capacity = 8;
     const int MaxBody = 256 * 1024;
@@ -422,7 +435,7 @@ public static class GreyportLobby_985471761739
                         IPAddress.IsLoopback(peerEndpoint.Address);
                     string cors=fileProbe ? "Access-Control-Allow-Origin: null\r\nAccess-Control-Allow-Methods: GET\r\nAccess-Control-Allow-Private-Network: true\r\nVary: Origin\r\n" : "";
                     if(verb=="OPTIONS" && !fileProbe)throw new Problem(403,"不允许跨站访问。");
-                    byte[] identity=verb=="GET"?Utf8.GetBytes("{\"game\":\"greyport-arena\",\"directPlay\":3}"):new byte[0];
+                    byte[] identity=verb=="GET"?Utf8.GetBytes("{\"game\":\"greyport-arena\",\"directPlay\":4}"):new byte[0];
                     Reply(stream,200,"application/json; charset=utf-8",identity,cors);return;
                 }
                 if(verb=="GET"){
@@ -550,7 +563,7 @@ public static class GreyportLobby_985471761739
                 var data=Json.DeserializeObject(reader.ReadToEnd()) as Dictionary<string,object>;
                 object version;
                 return data!=null && Field(data,"game")=="greyport-arena" &&
-                    data.TryGetValue("directPlay",out version) && Object.Equals(version,3);
+                    data.TryGetValue("directPlay",out version) && Object.Equals(version,4);
             }
         }catch(WebException){return false;}catch(IOException){return false;}catch(ArgumentException){return false;}
         catch(InvalidOperationException){return false;}
@@ -603,6 +616,14 @@ public static class GreyportLobby_985471761739
 </head>
 <body data-screen="connecting">
 <div id="battle"><canvas id="scene"></canvas><canvas id="weapon"></canvas>
+ <div id="scopeView" aria-hidden="true" hidden><div id="scopeLens">
+  <svg class="scopeReticle" viewBox="-100 -100 200 200" focusable="false">
+   <path class="reticlePosts" d="M-100,-1.2H-46L-42,0 -46,1.2H-100Z M100,-1.2H46L42,0 46,1.2H100Z M-1.2,100V46L0,42 1.2,46V100Z"/>
+   <path class="reticleLine" d="M-46,0H-1.6 M1.6,0H46 M0,-98V-1.6 M0,1.6V46 M-12,-1.1V1.1 M12,-1.1V1.1 M-1.1,12H1.1"/>
+   <circle class="reticleDot" cx="0" cy="0" r=".46"/>
+  </svg>
+  <div class="scopeReadout"><strong id="lensPower">2×</strong><kbd>V</kbd></div>
+ </div></div>
  <p id="entryStatus" role="status">正在进入战区…</p>
  <div id="hud"><div class="topleft"><canvas id="radar" width="180" height="135"></canvas><div class="radartag"><i data-i="pin"></i><span id="radarMap"></span></div></div>
  <div class="clock"><span>自由混战</span><b id="timer">05:00</b></div><div class="topright"><button id="shareMatch" class="hudbtn sharebtn" type="button"><i data-i="network"></i> 分享对局</button> <button id="pause" class="hudbtn" title="战斗菜单（Esc）" aria-label="战斗菜单"><i data-i="pause"></i></button><div id="killfeed"></div></div>
@@ -612,6 +633,7 @@ public static class GreyportLobby_985471761739
  <div class="vitals"><div class="healthrow"><i data-i="medical"></i><b id="hp">100</b><small>HP</small></div><div class="healthtrack"><b id="hpbar"></b></div><div class="scoreline"><span>击败 <b id="kills">0</b></span><span>阵亡 <b id="deaths">0</b></span></div></div>
  <div class="munition"><div id="weapLabel">AR-24</div><div id="ammoLine"><b id="ammo">30</b> <span>/</span> <em id="reserve">120</em></div><div id="knifeAction" hidden>左键挥刀</div>
  <div id="fireSetting"><i class="burstGlyph" aria-hidden="true"><i></i><i></i><i></i></i><strong id="fireModeLabel">连发</strong><kbd id="fireModeKey">B</kbd></div>
+ <div id="opticSetting"><span>倍镜</span><strong id="scopePower">2×</strong><kbd>V</kbd></div>
  <div id="reloadMeter" hidden><small id="gunstatus">换弹中</small><div class="reloadTrack"><i id="reloadFill"></i></div></div>
  <div id="weaponSlots" aria-label="武器快捷键"><small class="equipped">1 步枪</small><small>2 手枪</small><small>3 刀</small></div></div>
  <div id="fieldHint"><strong>点击画面控制视角</strong><span>WASD 移动 · 左键攻击 · Q 切回上一把 · Esc 菜单</span></div>
@@ -693,16 +715,22 @@ public static class GreyportLobby_985471761739
         box(s*(w/2+.015),y,z,.004,.007,.030,mat.light,0,false);
       }
     }
-    function optical(y,z,small=false){
-      const width=small?.19:.28, height=small?.13:.205;
-      box(0,y-.025,z,width+.027,.068,.22,mat.dark);
-      box(0,y+.015,z,width,.036,.15,mat.iron,.007);
-      for(const s of [-1,1]){
-        box(s*(width/2-.015),y+height/2,z,.034,height,.15,mat.black,.016);
-        box(s*(width/2-.015),y+height*.86,z-.076,.017,.026,.008,mat.glass,0);
+    function optical(y,z){
+      const center=y+.136;
+      for(const offset of [-.11,.12]){
+        box(0,y-.007,z+offset,.18,.102,.073,mat.iron,.011);
+        tube([0,center,z+offset-.035],[0,center,z+offset+.035],.116,.116,mat.plate,16);
       }
-      box(0,y+height,z,width-.018,.035,.145,mat.iron,.01);
-      return y+height*.52;
+      tube([0,center,z-.31],[0,center,z+.25],.103,.101,mat.black,20);
+      tube([0,center,z-.38],[0,center,z-.29],.130,.106,mat.iron,20);
+      tube([0,center,z+.19],[0,center,z+.31],.101,.135,mat.iron,20);
+      for(const d of [-.38,.31]){
+        const side=Math.sign(d),end=z+d;
+        tube([0,center,end],[0,center,end+side*.018],.136,.136,mat.dark,24);
+        tube([0,center,end+side*.018],[0,center,end+side*.020],.103,.103,'#324951',24);
+      }
+      tube([0,center+.074,z+.017],[0,center+.145,z+.017],.055,.061,mat.iron,12);
+      return center;
     }
     let tip, eye, rear, supportZ;
     if(index===0){
@@ -1137,7 +1165,7 @@ public static class GreyportLobby_985471761739
       gl.drawArrays(gl.TRIANGLES,0,entry.count);
       return point=>{const p=rotate(point,m),z=p[2]+pos[2];return [w/2+f*(p[0]+pos[0])/z,h/2-f*(p[1]+pos[1])/z];};
     }
-    const gpu={draw,clear};accelerators.set(canvas,gpu);return gpu;
+    const gpu={draw,clear,layer};accelerators.set(canvas,gpu);return gpu;
   }
   function flash(ctx,x,y,r,serial,strength){
     ctx.save();ctx.translate(x,y);ctx.globalCompositeOperation='lighter';
@@ -1188,9 +1216,22 @@ public static class GreyportLobby_985471761739
   }
   function draw(canvas,s){
     if(!canvas||!s)return;
+    const scope=s.weapon===0?clamp(s.scopeBlend||0,0,1):0;
+    const visibility=s.hp?1-ease(.06,.78,scope):0;
+    const opacity=visibility<=.001?'0':visibility>=.999?'':String(Math.round(visibility*1000)/1000);
+    const changed=canvas.style.opacity!==opacity;
+    if(changed)canvas.style.opacity=opacity;
+    const previous=accelerators.get(canvas);
+    if(previous&&previous.layer.style.opacity!==opacity)previous.layer.style.opacity=opacity;
+    // The lens is drawn by the HUD over the world camera. Stop both foreground passes inside it.
+    if(visibility<=.001){
+      if(changed){previous?.clear();canvas.getContext('2d').clearRect(0,0,canvas.width,canvas.height);}
+      activeModels.delete(canvas);return;
+    }
     const target=surface(canvas), {ctx,w,h}=target;
     const gpu=accelerator(canvas);
-    if(!s.hp || w<2||h<2){gpu?.clear();return;}
+    if(gpu&&!previous)gpu.layer.style.opacity=opacity;
+    if(w<2||h<2){gpu?.clear();return;}
     const model=models[s.weapon]||models[0],t=s.time||0;
     const key=lightInView(s.yaw||0,s.pitch||0),f=h*.88,exposure=window.Arena?.viewExposure??1;
     if(model.index===2){
@@ -1215,11 +1256,6 @@ public static class GreyportLobby_985471761739
     const slide=Math.max(s.flash||0,pose.finish*.8)*(model.index===1?.19:.075);
     const projected=gpu?gpu.draw(model,m,pos,f,w,h,pose,slide,key,exposure):
       render(model,{...target,m,pos,f,cx:w*.5,cy:h*.5,preview:false,pose,slide,key,exposure});
-    if(a>.72&&model.index===0){
-      const x=w*.5,y=h*.5,r=Math.max(1,h*.00145);
-      ctx.fillStyle='rgba(126,238,205,'+((a-.72)/.28)+')';
-      ctx.beginPath();ctx.arc(x,y,r,0,TAU);ctx.fill();
-    }
     if(s.flash>0){
       const tip=projected([0,model.index===1?.12:.055,model.tip+.07]);
       flash(ctx,tip[0],tip[1],h*(model.index===1?.042:.061)*(.72+s.flash*.48),s.shotSerial||0,s.flash);
@@ -1288,6 +1324,7 @@ window.Arena = (() => {
 
   let gl,canvas,program,sky,shadowProgram,staticMesh,actorMesh,skyBuf,terrain,decals,occlusionMap,shadowTex,shadowFB,shadowSize;
   let skyMap,skyMapReady=false;
+  let viewportLimit,anisotropy,maxAnisotropy=1;
   // One calibration aligns the sun disk, directional light, shadow map and water reflection.
   const skyPhoto={sunU:.680,sunV:.391,horizonV:.557,azimuth:-17*Math.PI/180,elevation:21*Math.PI/180};
   const sunDirection=Object.freeze([Math.sin(skyPhoto.azimuth)*Math.cos(skyPhoto.elevation),
@@ -1825,6 +1862,9 @@ window.Arena = (() => {
     else drawYard();
     return new Float32Array(mesh);
   }
+  function textureDetail(samples){
+    if(anisotropy)gl.texParameterf(gl.TEXTURE_2D,anisotropy.TEXTURE_MAX_ANISOTROPY_EXT,Math.min(samples,maxAnisotropy));
+  }
   function makeNoise(){
     const size=256,img=new Uint8Array(size*size*4), tiled=[];
     for(const n of [4,8,16,32,64,128]){
@@ -1842,7 +1882,7 @@ window.Arena = (() => {
     }
     const t=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,t);gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,size,size,0,gl.RGBA,gl.UNSIGNED_BYTE,img);
     gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR_MIPMAP_LINEAR);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
-    gl.generateMipmap(gl.TEXTURE_2D);return t;
+    gl.generateMipmap(gl.TEXTURE_2D);textureDetail(2);return t;
   }
   function makeOcclusion(){
     // Static contact shadow and dirt mask, sampled by the arena pavement.
@@ -1888,6 +1928,7 @@ window.Arena = (() => {
     const t=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,t);gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,false);
     gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,atlas);gl.generateMipmap(gl.TEXTURE_2D);
     gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR_MIPMAP_LINEAR);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
+    textureDetail(4);
     return t;
   }
   function makeSkyTexture(){
@@ -2104,6 +2145,9 @@ window.Arena = (() => {
     if(gl&&canvas===cvs&&!gl.isContextLost())return true;
     canvas=cvs;gl=cvs.getContext('webgl',{antialias:true,alpha:false,depth:true,stencil:true,preserveDrawingBuffer:false,powerPreference:'high-performance'});
     if(!gl)throw new Error('此浏览器无法建立 WebGL 图形上下文');
+    viewportLimit=gl.getParameter(gl.MAX_VIEWPORT_DIMS);
+    anisotropy=gl.getExtension('EXT_texture_filter_anisotropic');
+    maxAnisotropy=anisotropy?gl.getParameter(anisotropy.MAX_TEXTURE_MAX_ANISOTROPY_EXT):1;
     program=locations(shaderProgram(vert,frag),['aP','aN','aC','aU','aM'],[...common,'eye','atlas','depthTex','texel','aoMap','skyMap','skyReady']);
     sky=locations(shaderProgram(skyVert,skyFrag),['vert'],[...common,'skyMap','skyReady']);
     shadowProgram=locations(shaderProgram('attribute vec3 aP;'+shadowCoords+'void main(){gl_Position=vec4(lightSpace(aP),1.);}',
@@ -2617,10 +2661,10 @@ function buildOperatorGun(b,look,index) {
   b.box(0,.040,rear,.047,.094,.009,grip,13);
   b.beam([0,.031,-.043],[0,.001,-.039],.0047,dark,13,6);
   b.beam([0,.001,-.039],[0,-.005,.002],.0047,dark,13,6);
-  // Open optical frame retains a readable sight silhouette at a distance.
-  b.box(0,.102,-.066,.033,.011,.054,dark,13);
-  for(const s of [-1,1])b.box(s*.015,.123,-.074,.006,.032,.033,metal,13);
-  b.box(0,.141,-.074,.036,.006,.033,metal,13);
+  b.box(0,.101,-.074,.032,.018,.072,dark,13);
+  b.beam([0,.124,-.145],[0,.124,-.010],.020,metal,13,12);
+  for(const z of [-.145,-.016])b.beam([0,.124,z],[0,.124,z+.008],.024,dark,13,12);
+  b.beam([0,.142,-.068],[0,.153,-.068],.010,metal,13,8);
 }
 
   const operatorBones = Object.freeze([
@@ -2991,6 +3035,7 @@ function buildOperatorGun(b,look,index) {
       gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,false);
       gl.texImage2D(gl.TEXTURE_2D,0,gl.RGB,gl.RGB,gl.UNSIGNED_BYTE,faceImage);
       gl.generateMipmap(gl.TEXTURE_2D);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR_MIPMAP_LINEAR);
+      textureDetail(2);
       gl.activeTexture(gl.TEXTURE0);
     }
     if(faceImage.complete&&faceImage.naturalWidth)uploadPortrait();else faceImage.onload=uploadPortrait;
@@ -3116,6 +3161,7 @@ function buildOperatorGun(b,look,index) {
   }
   function drawOperators(s,t,right,up,forward,proj){
     const roster=s.actors||[],live=[];
+    const detailThreshold=115-40*(s.scopeBlend||0);
     for(const a of roster){
       if((a.alive===false&&(!Number.isFinite(a.deathAge)||a.deathAge>=2.2))||
         !Number.isFinite(a.x)||!Number.isFinite(a.z)){operatorMotion.delete(a.id);continue;}
@@ -3125,7 +3171,10 @@ function buildOperatorGun(b,look,index) {
       const vertical=Math.abs(dx*up[0]+dy*up[1]+dz*up[2]);
       if(depth< -2.2 || horizontal>Math.max(0,depth)/proj[0]+2.2 || vertical>Math.max(0,depth)/proj[1]+2.2)continue;
       const pixels=canvas.height*proj[1]*.9/Math.max(1,depth);
-      live.push([a,sampleMotion(a,t),pixels<115]);
+      const motion=sampleMotion(a,t);
+      // Compare projected height in this camera, with a band to keep mesh changes stable.
+      motion.detailed=pixels>detailThreshold*(motion.detailed?.88:1);
+      live.push([a,motion,!motion.detailed]);
     }
     for(const id of operatorMotion.keys())if(!roster.some(a=>(a.id??a.name??'operator')===id))operatorMotion.delete(id);
     if(!live.length)return;
@@ -3203,8 +3252,11 @@ function buildOperatorGun(b,look,index) {
   }
   function draw(s){
     if(!gl||gl.isContextLost())return;
-    const px=Math.min(1.65,window.devicePixelRatio||1,1750/Math.max(canvas.clientWidth,1));
-    const w=Math.max(1,Math.round(canvas.clientWidth*px)),h=Math.max(1,Math.round(canvas.clientHeight*px));
+    // Keep one native-resolution scene target through changes of magnification.
+    const cssWidth=Math.max(1,canvas.clientWidth),cssHeight=Math.max(1,canvas.clientHeight);
+    const px=Math.min(window.devicePixelRatio||1,2,2560/Math.max(cssWidth,cssHeight),
+      viewportLimit[0]/cssWidth,viewportLimit[1]/cssHeight,Math.sqrt((2304*1296)/(cssWidth*cssHeight)));
+    const w=Math.max(1,Math.round(cssWidth*px)),h=Math.max(1,Math.round(cssHeight*px));
     if(canvas.width!==w||canvas.height!==h){canvas.width=w;canvas.height=h;}
     let fov=s.fov||(72-16*(s.aim||0));if(fov>3.14)fov*=Math.PI/180;
     const py=1/Math.tan(fov/2),pp=[py*h/w,py],yaw=s.yaw||0,pitch=s.pitch||0,t=s.time||0;
@@ -3246,7 +3298,7 @@ function buildOperatorGun(b,look,index) {
     // Pass a file URI so Windows can resolve drive letters, UNC paths and escaped characters.
     // PowerShell string delimiters are escaped even when the browser leaves them in a URL.
     const fileUri = source.href.replace(/'/g, '%27');
-    const typeName = 'GreyportLobby_985471761739';
+    const typeName = 'GreyportLobby_cb3c6b463a6c';
     const dataBlock = '(?s)<' + 'script id="greyport-lobby" type="text/plain">(.*?)<' + '/script>';
     return [
       "$greyportHtml=[IO.File]::ReadAllText(([uri]'" + fileUri + "').LocalPath)",
@@ -3297,7 +3349,7 @@ function buildOperatorGun(b,look,index) {
     try {
       const r=await fetch(origin+'/api/identity',{signal:abort.signal,credentials:'omit',cache:'no-store',redirect:'error'});
       const info=r.ok?await r.json():null;
-      return info?.game==='greyport-arena'&&info.directPlay===3?origin:'';
+      return info?.game==='greyport-arena'&&info.directPlay===4?origin:'';
     } catch { return ''; }
     finally { clearTimeout(timeout); }
   }
@@ -3528,6 +3580,10 @@ function buildOperatorGun(b,look,index) {
   const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
   const now = () => performance.now() / 1000;
   const radius = .34, eyes = 1.54, duration = 300;
+  const hipFov=72, hipHalfTangent=Math.tan(hipFov*Math.PI/360);
+  const scopePowers=[2,4,8], scopeTransitionSeconds=.18;
+  let scopeZoom=scopePowers[0], scopeScale=1, scopeFrom=1, scopeTo=1, scopeStarted=0;
+  let scopeBlend=0, scopeBlendFrom=0;
   const keys = new Set();
   const wheelGesture={at:-1,direction:0,pixels:0,switched:false};
   let round = null, self = null, players = new Map(), effects = [], listeners = [];
@@ -3556,12 +3612,38 @@ function buildOperatorGun(b,look,index) {
     phase = next;
     ui('screen', next);
   }
+  function scopeActive() {
+    return phase==='playing' && self?.weapon===0 && self.hp>0 && !self.reloadAt && aimHeld;
+  }
+  function resetScope() {
+    scopeScale=scopeFrom=scopeTo=1;
+    scopeBlend=scopeBlendFrom=0;
+    if (round) {round.presentedKick=null; round.presentedEye=null;}
+  }
+  function updateScope(time) {
+    const progress=clamp((time-scopeStarted)/scopeTransitionSeconds,0,1);
+    const ease=progress*progress*(3-2*progress);
+    scopeScale=progress===1 ? scopeTo : scopeFrom*Math.pow(scopeTo/scopeFrom,ease);
+    const blendTarget=scopeTo>1?1:0;
+    scopeBlend=scopeBlendFrom+(blendTarget-scopeBlendFrom)*ease;
+    const target=scopeActive()?scopeZoom:1;
+    if (target!==scopeTo) {
+      scopeFrom=scopeScale; scopeBlendFrom=scopeBlend; scopeTo=target; scopeStarted=time;
+    }
+  }
+  function fieldOfView() {
+    if (self.weapon===1) return hipFov-16*aim;
+    // Perspective projection scales by cot(fov / 2). Dividing the angle itself
+    // would not produce the magnification engraved on the optic.
+    return 360/Math.PI*Math.atan(hipHalfTangent/scopeScale);
+  }
   function clearInput() {
     keys.clear();
     wheelGesture.at=-1;
     if (self?.triggerHeld) setTrigger(self,false);
     if (self) self.pressUntil=-1;
     fireHeld = aimHeld = jumpPressed = false;
+    aim=0; resetScope();
     drag = null;
     walking = running = false;
   }
@@ -3891,6 +3973,7 @@ function buildOperatorGun(b,look,index) {
     resetKick(p);
     if (p === self) {
       muzzle = 0; fireHeld=false; aimHeld=false; aim=0; switchedAt = round.time;
+      resetScope();
       tone(420, 140, .06, .038, 'triangle');
       if (!authority()) send({t:'weapon',i,seq:++clientShot,spawn:p.spawnNo}, window.LAN.hostId);
       ui('hud',viewState());
@@ -3918,6 +4001,21 @@ function buildOperatorGun(b,look,index) {
     const up=p.kickUpSpeed+rate*p.kickUp, side=p.kickSideSpeed+rate*p.kickSide;
     p.kickUp=(p.kickUp+up*dt)*fall; p.kickUpSpeed=(p.kickUpSpeed-rate*up*dt)*fall;
     p.kickSide=(p.kickSide+side*dt)*fall; p.kickSideSpeed=(p.kickSideSpeed-rate*side*dt)*fall;
+  }
+  function cameraKick(p) {
+    return [p.kickSide*.020,p.kickUp*.022];
+  }
+  function eyePosition(p) {
+    return [p.x,p.feet+eyes+eyeBob(p),p.z];
+  }
+  function scopedEye(p) {
+    const actual=eyePosition(p), displayed=p===self?round.presentedEye:p.scopedEye;
+    if (!displayed) return actual;
+    const delta=displayed.map((v,i)=>v-actual[i]), distance=Math.hypot(...delta);
+    // Only reconcile sub-frame travel. A delayed position cannot move a shot to
+    // the other side of cover or back to the previous spawn.
+    if (distance>.30 || distance<.00001) return actual;
+    return wallDistance(actual,delta.map(v=>v/distance),distance)>=distance ? displayed : actual;
   }
   // Trigger edges are reliable room messages. Each machine schedules held fire on its
   // simulation clock so rendering frequency and packet batching cannot change the cadence.
@@ -3967,8 +4065,12 @@ function buildOperatorGun(b,look,index) {
     p.nextShot=next+interval; p.chain=continuous?Math.min(6,p.chain+1):0;
     p.lastShotAt=time; p.shotsFired++; p.mags[i]--; p.safeUntil=0;
     advanceKick(p,time);
-    const yawKick=p.kickSide*.020,pitchKick=p.kickUp*.022;
     const ads=p===self?aimHeld:p.ads;
+    const scoped=p.weapon===0 && ads;
+    // At 8× even one tick of spring decay is visible. Use the recoil offset
+    // that was on the shooter's screen, plus the latest mouse input.
+    const displayedKick=p===self?round.presentedKick:p.scopedKick;
+    const [yawKick,pitchKick]=scoped && displayedKick ? displayedKick : cameraKick(p);
     const force=gun.kick*(ads ? .68 : 1)*(1+p.chain*.045);
     p.kickUp+=.085; p.kickUpSpeed=Math.min(49,p.kickUpSpeed+force);
     const sway=Math.sin(p.shotsFired*2.12+p.weapon)*.62+Math.sin(p.shotsFired*.77)*.38;
@@ -3981,7 +4083,7 @@ function buildOperatorGun(b,look,index) {
     const jitter=gun.spread*(ads ? .33 : 1)*Math.min(1,p.chain/3);
     const yaw=p.yaw+yawKick+(Math.random()-.5)*jitter*2;
     const pitch=p.pitch+pitchKick+(Math.random()-.5)*jitter*2;
-    const origin=[p.x,p.feet+eyes+eyeBob(p),p.z];
+    const origin=scoped?scopedEye(p):eyePosition(p);
     resolveImpact(p,time,traceAttack(p,origin,yaw,pitch,80,attackViewTime(p)));
   }
   function finishSwing(p,time) {
@@ -4151,6 +4253,9 @@ function buildOperatorGun(b,look,index) {
     if (!p.hp || ![m.x,m.z,m.yaw,m.pitch,m.feet].every(Number.isFinite)) return;
     if (Number.isFinite(m.seenAt)) p.sightDelay=clamp(round.time-m.seenAt,0,maxRewind);
     if (Number.isFinite(m.eyeBob)) p.eyeBob=clamp(m.eyeBob,-.024,.024);
+    p.scopedKick=m.ads && Array.isArray(m.kick) && m.kick.length===2 && m.kick.every(Number.isFinite)
+      ? [clamp(m.kick[0],-.12,.12),clamp(m.kick[1],0,.18)] : null;
+    p.scopedEye=m.ads && Array.isArray(m.eye) && m.eye.length===3 && m.eye.every(Number.isFinite) ? m.eye : null;
     const dt=clamp(now()-(p.poseAt ?? now()),0,.8);
     const dx=m.x-p.x, dz=m.z-p.z, len=Math.hypot(dx,dz);
     const step=Math.min(1, (7*dt+.10)/(len || 1));
@@ -4210,7 +4315,8 @@ function buildOperatorGun(b,look,index) {
   }
   function poseMessage() {
     return {x:self.x,z:self.z,yaw:self.yaw,pitch:self.pitch,feet:self.feet,ads:aimHeld,spawn:self.spawnNo,
-      seenAt:localShotTime(),eyeBob:eyeBob(self)};
+      seenAt:localShotTime(),eyeBob:eyeBob(self),kick:scopeActive()?round.presentedKick??cameraKick(self):undefined,
+      eye:scopeActive()?round.presentedEye:undefined};
   }
   function hello() {
     send({t:'hello',name:self.name,weapon:self.weapon},window.LAN.hostId);
@@ -4283,8 +4389,11 @@ function buildOperatorGun(b,look,index) {
         reload:reloadProgress(p,time),reloadEmpty:p.reloadEmpty,shotSerial:p.shotsFired,shotAge:Math.max(0,time-p.lastShotAt),
         deathAge:age,deathYaw:p.deathYaw};
     });
+    const [yawKick,pitchKick]=cameraKick(self), fov=fieldOfView();
     return {x:self.x,z:self.z,y:actorFeet(self,deathAge)+eyes-deathDrop+eyeBob(self),
-      yaw:self.yaw+self.kickSide*.020,pitch:self.pitch+self.kickUp*.022-deathDrop*.095,weapon:self.weapon,weaponName:g.name,ammo:self.mags[self.weapon],
+      yaw:self.yaw+yawKick,pitch:self.pitch+pitchKick-deathDrop*.095,weapon:self.weapon,weaponName:g.name,ammo:self.mags[self.weapon],
+      fov,scopeZoom,scopeActive:scopeActive(),scopeBlend:self.weapon===0 && phase==='playing' ? scopeBlend : 0,
+      scopeMagnification:self.weapon===1?hipHalfTangent/Math.tan(fov*Math.PI/360):scopeScale,
       reserve:self.stock[self.weapon],maxAmmo:g.cap,hp:self.hp,kills:self.kills,deaths:self.deaths,
       secondsLeft:Math.max(0,Math.ceil(round.remaining)),respawnLeft:Math.ceil(secondsToSpawn),
       invulnerable:self.safeUntil>time,time,recoil:clamp(self.kickUp,0,1.5),recoilSide:clamp(self.kickSide,-1,1),
@@ -4312,10 +4421,14 @@ function buildOperatorGun(b,look,index) {
     killConfirm=Math.max(0,killConfirm-dt);
     hurt=Math.max(0,hurt-dt); hit=Math.max(0,hit-dt);
     aim+=((aimHeld && self.hp>0 && !self.reloadAt ? 1 : 0)-aim)*(1-Math.exp(-dt*15));
+    updateScope(n);
     const displayTime=renderTime(), state=viewState(displayTime);
     window.Arena.draw(state);
     round.presentedAt=displayTime;
+    round.presentedKick=cameraKick(self);
+    round.presentedEye=[state.x,state.y,state.z];
     if (window.Weapon) window.Weapon.draw(overlay,state);
+    ui('scope',state);
     if (n-lastHUD>1/30) { ui('hud',state); lastHUD=n; }
   }
   function ensureRenderer() {
@@ -4338,7 +4451,7 @@ function buildOperatorGun(b,look,index) {
   }
   function look(dx,dy) {
     if (!self || !Number.isFinite(dx) || !Number.isFinite(dy)) return;
-    const sensitivity=(1-aim*.45)*.0021;
+    const sensitivity=.0021*(self.weapon===0 ? 1/scopeScale : 1-aim*.45);
     self.yaw+=dx*sensitivity;
     self.pitch=clamp(self.pitch-dy*sensitivity,-1.3,1.3);
   }
@@ -4415,6 +4528,11 @@ function buildOperatorGun(b,look,index) {
     if (e.repeat) return;
     if (e.code==='Space') jumpPressed=true;
     if (e.code==='KeyR') beginReload(self);
+    if (e.code==='KeyV' && self.weapon===0) {
+      scopeZoom=scopePowers[(scopePowers.indexOf(scopeZoom)+1)%scopePowers.length];
+      updateScope(now());
+      ui('hud',viewState());
+    }
     if (e.code==='KeyQ') changeWeapon(self,self.previousWeapon);
     if (e.code==='KeyB') {
       if (self.weapon===0) changeFireMode(self,self.modes[0]==='auto'?'semi':'auto');
@@ -4436,14 +4554,14 @@ function buildOperatorGun(b,look,index) {
     }
     // The first click in an automatically opened match activates mouse look.
     // A restricted browser can still use click-and-drag if pointer lock was denied.
-    if (!controlsEngaged) { controlsEngaged=true; ui('hud',viewState()); return; }
+    if (!controlsEngaged) { controlsEngaged=true; ui('hud',viewState()); if (e.button===0) return; }
     if (e.button===0) { fireHeld=true; setTrigger(self,true); }
-    if (e.button===2) { aimHeld=!guns[self.weapon].melee; e.preventDefault(); }
+    if (e.button===2) { aimHeld=!guns[self.weapon].melee; updateScope(now()); e.preventDefault(); }
   });
   document.addEventListener('mouseup',e=>{
     if (!e.buttons) drag=null;
     if (e.button===0 && self) {fireHeld=false;setTrigger(self,false);}
-    if (e.button===2) aimHeld=false;
+    if (e.button===2) { aimHeld=false; if (round) updateScope(now()); }
   });
   document.addEventListener('mousemove',e=>{
     if (phase!=='playing') return;
@@ -4581,7 +4699,7 @@ function drawMap(canvas, state, radar=false, map=window.Arena?.map){
   dlg.addEventListener('click',e=>{if(e.target!==dlg)return;const r=dlg.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)closeModal()});
   if(stored('sound','on')==='off')Game.setSound(false);
   function help(){
-    const keys=[['突击步枪','1'],['手枪','2'],['刀','3'],['上一把武器','Q'],['循环切换武器','鼠标滚轮'],['开火 / 挥刀','鼠标左键'],['举枪瞄准','按住右键'],['步枪单发 / 连发','B'],['换弹','R'],['移动 / 疾跑','WASD / Shift'],['跳跃','空格'],['战斗菜单','Esc']];
+    const keys=[['突击步枪','1'],['手枪','2'],['刀','3'],['上一把武器','Q'],['循环切换武器','鼠标滚轮'],['开火 / 挥刀','鼠标左键'],['举枪瞄准 / 开镜','按住右键'],['步枪倍镜 2× / 4× / 8×','V'],['步枪单发 / 连发','B'],['换弹','R'],['移动 / 疾跑','WASD / Shift'],['跳跃','空格'],['战斗菜单','Esc']];
     showModal('help','FIELD MANUAL','操作指南','<div class="keylist">'+keys.map(([a,b])=>'<div>'+a+'<kbd>'+b+'</kbd></div>').join('')+'</div><p style="margin-top:16px">第一次点击画面后，移动鼠标转动视角。手枪每次点击打一发，持刀时每次点击挥一次。阵亡后 15 秒自动复活。</p>');
   }
   function armory(selected){
@@ -4590,6 +4708,7 @@ function drawMap(canvas, state, radar=false, map=window.Arena?.map){
       [['弹匣容量',g.cap+' 发'],['基础伤害',g.damage],['射击模式',selected===0?'单发 / 连发':'单发'],
       ['射速上限',Math.round(60/(selected===0?g.delay:g.semiDelay))+' 发/分'],
       ['常规换弹',g.load.toFixed(2)+' 秒'],['空匣换弹',g.emptyLoad.toFixed(2)+' 秒']];
+    if(selected===0)stats.push(['可变倍镜','2× / 4× / 8×']);
     showModal('arm','LOADOUT','武器库','<div class="seg">'+guns.map((w,i)=>'<button data-gun="'+i+'" class="'+(i===selected?'chosen':'')+'">'+w.name+'</button>').join('')+'</div><canvas id="gunPreview"></canvas><div class="gunhead"><strong>'+g.name+'</strong><span>'+gunTypes[selected]+'</span></div><div class="gunstats">'+stats.map(([k,v])=>'<div>'+k+'<b>'+v+'</b></div>').join('')+'</div><div class="rowactions"><button class="bt primary" id="equip">'+(selected===equipped?'已选为出场武器':'设为出场武器')+'</button></div>');
     body.querySelectorAll('[data-gun]').forEach(b=>b.onclick=()=>armory(Number(b.dataset.gun)));
     $('equip').onclick=()=>{equipped=selected;store('loadout',slotIds[selected]);closeModal();notify('下次入场使用 '+g.name)};
@@ -4728,6 +4847,17 @@ function drawMap(canvas, state, radar=false, map=window.Arena?.map){
     targetTimer=setTimeout(()=>{health.hidden=true;shownTarget=null;},Math.max(0,target.until*1000-performance.now()));
   }
   const slotLabels=[...$('weaponSlots').children];
+  const scopeLayer=$('scopeView'),hipCross=$('cross');
+  let scopeOpacity=0;
+  function scope(s){
+    const alpha=s && s.phase==='playing' && s.weapon===0 ? Math.round((s.scopeBlend||0)*1000)/1000 : 0;
+    if(alpha>0)text('lensPower',s.scopeZoom+'×');
+    if(alpha===scopeOpacity)return;
+    scopeOpacity=alpha;
+    scopeLayer.hidden=alpha===0;
+    scopeLayer.style.opacity=String(alpha);
+    hipCross.style.visibility=alpha>.15?'hidden':'';
+  }
   let activeSlot=-1;
   function hud(s){
     lastState=s;
@@ -4741,6 +4871,8 @@ function drawMap(canvas, state, radar=false, map=window.Arena?.map){
       for(let i=0;i<slotLabels.length;i++)slotLabels[i].classList.toggle('equipped',i===activeSlot);
     }
     text('weapLabel',guns[s.weapon].name);
+    $('opticSetting').hidden=s.weapon!==0 || s.scopeBlend>.8;
+    if(s.weapon===0)text('scopePower',s.scopeZoom+'×');
     $('ammoLine').hidden=s.melee;$('knifeAction').hidden=!s.melee;$('fireSetting').hidden=s.melee;
     if(!s.melee){text('ammo',s.ammo);text('reserve',s.reserve);}
     const automatic=s.fireMode==='auto', reloading=s.reload>=0;
@@ -4764,6 +4896,7 @@ function drawMap(canvas, state, radar=false, map=window.Arena?.map){
   }
   function screen(phase){
     document.body.dataset.screen=phase;
+    if(phase!=='playing')scope(null);
     $('entryStatus').hidden=true;
     if(phase==='menu'){lastState=null;closeModal();text('defeatedName','');$('elimination').classList.remove('visible');disconnected();return}
     if(phase==='playing'){$('matchOverlay').hidden=true;return}
@@ -4787,7 +4920,7 @@ function drawMap(canvas, state, radar=false, map=window.Arena?.map){
   }
   $('pause').onclick=()=>Game.pause();$('shareMatch').onclick=share;
   LAN.onPeers(()=>{text('roomtag',roomLabel());if(document.body.dataset.screen==='paused')text('matchText',Arena.map.name+' · '+roomLabel())});
-  window.UI={screen,hud,vitals,notify,feed,elimination};
+  window.UI={screen,hud,scope,vitals,notify,feed,elimination};
   window.addEventListener('resize',()=>{if($('largePlot'))refreshPreview();if($('gunPreview'))Weapon.preview($('gunPreview'),Number(body.querySelector('.chosen')?.dataset.gun??0))});
   void enter(target).then(async()=>{
     if(!LAN.localOnly)return;

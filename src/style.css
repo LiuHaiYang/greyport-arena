@@ -9,6 +9,19 @@ dialog,.matchcard{color:var(--fg);border:1px solid #596056;background:#1d2421;bo
 .mapdesc{margin:13px 0}.legend{font-size:12px!important;margin-top:9px}.legend span{color:#e5aa79}
 .field select{font:inherit;background:#171e1a;border:1px solid #4e584c;color:var(--fg);padding:9px 10px}.field select:focus-visible{outline:2px solid var(--orange);outline-offset:2px}
 .munition{min-width:120px}
+#scopeView{position:fixed;inset:0;display:grid;place-items:center;pointer-events:none;overflow:hidden}
+#scopeLens{position:relative;width:87vmin;height:87vmin;border-radius:50%;
+  background:radial-gradient(circle,transparent 56%,rgba(17,31,33,.025) 75%,rgba(9,20,23,.17) 91%,rgba(6,15,18,.46) 98%,rgba(3,9,10,.84) 100%);
+  box-shadow:inset 0 0 0 1px #a5bfba99,0 0 0 2px #171d1f,0 0 0 4px #414a48,0 0 0 6px #151919,0 0 0 7px #303737,0 0 0 150vmax #0a0d0efc}
+.scopeReticle{position:absolute;inset:0;width:100%;height:100%;border-radius:50%;overflow:hidden}
+.reticleLine{fill:none;stroke:#1a1917;stroke-width:1.25;vector-effect:non-scaling-stroke;filter:drop-shadow(0 .5px .5px #f2efe599)}
+.reticlePosts{fill:#171815;stroke:#ddd8c466;stroke-width:.7;vector-effect:non-scaling-stroke}
+.reticleDot{fill:#ff965f;stroke:#2d1911;stroke-width:1;vector-effect:non-scaling-stroke}
+.scopeReadout{position:absolute;left:68%;bottom:12%;transform:translateX(-50%);display:flex;align-items:center;gap:7px;padding:1px 6px;border-radius:2px;background:#0e1718bf;color:#ecebd9}
+.scopeReadout strong{font:700 clamp(14px,2.5vmin,22px)/1.16 var(--display);letter-spacing:.04em}
+.scopeReadout kbd,#opticSetting kbd{font:10px var(--mono);padding:0 3px;box-shadow:none;border:1px solid #919b8e;color:#e4e9de;background:#29342f}
+#opticSetting{display:flex;align-items:center;justify-content:flex-end;gap:6px;margin-top:3px}
+#opticSetting span,#opticSetting strong{font:600 12px var(--sans);color:#e6e9d9}
 #weaponSlots{display:flex;justify-content:flex-end;gap:8px;margin-top:7px}
 #weaponSlots small{font:11px var(--sans);color:#ced4c9;border-bottom:2px solid transparent;padding-bottom:2px}
 #weaponSlots .equipped{color:#ffd0a0;border-color:var(--orange)}

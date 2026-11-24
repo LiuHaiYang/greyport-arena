@@ -10,6 +10,10 @@
   const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
   const now = () => performance.now() / 1000;
   const radius = .34, eyes = 1.54, duration = 300;
+  const hipFov=72, hipHalfTangent=Math.tan(hipFov*Math.PI/360);
+  const scopePowers=[2,4,8], scopeTransitionSeconds=.18;
+  let scopeZoom=scopePowers[0], scopeScale=1, scopeFrom=1, scopeTo=1, scopeStarted=0;
+  let scopeBlend=0, scopeBlendFrom=0;
   const keys = new Set();
   const wheelGesture={at:-1,direction:0,pixels:0,switched:false};
   let round = null, self = null, players = new Map(), effects = [], listeners = [];
@@ -38,12 +42,38 @@
     phase = next;
     ui('screen', next);
   }
+  function scopeActive() {
+    return phase==='playing' && self?.weapon===0 && self.hp>0 && !self.reloadAt && aimHeld;
+  }
+  function resetScope() {
+    scopeScale=scopeFrom=scopeTo=1;
+    scopeBlend=scopeBlendFrom=0;
+    if (round) {round.presentedKick=null; round.presentedEye=null;}
+  }
+  function updateScope(time) {
+    const progress=clamp((time-scopeStarted)/scopeTransitionSeconds,0,1);
+    const ease=progress*progress*(3-2*progress);
+    scopeScale=progress===1 ? scopeTo : scopeFrom*Math.pow(scopeTo/scopeFrom,ease);
+    const blendTarget=scopeTo>1?1:0;
+    scopeBlend=scopeBlendFrom+(blendTarget-scopeBlendFrom)*ease;
+    const target=scopeActive()?scopeZoom:1;
+    if (target!==scopeTo) {
+      scopeFrom=scopeScale; scopeBlendFrom=scopeBlend; scopeTo=target; scopeStarted=time;
+    }
+  }
+  function fieldOfView() {
+    if (self.weapon===1) return hipFov-16*aim;
+    // Perspective projection scales by cot(fov / 2). Dividing the angle itself
+    // would not produce the magnification engraved on the optic.
+    return 360/Math.PI*Math.atan(hipHalfTangent/scopeScale);
+  }
   function clearInput() {
     keys.clear();
     wheelGesture.at=-1;
     if (self?.triggerHeld) setTrigger(self,false);
     if (self) self.pressUntil=-1;
     fireHeld = aimHeld = jumpPressed = false;
+    aim=0; resetScope();
     drag = null;
     walking = running = false;
   }
@@ -373,6 +403,7 @@
     resetKick(p);
     if (p === self) {
       muzzle = 0; fireHeld=false; aimHeld=false; aim=0; switchedAt = round.time;
+      resetScope();
       tone(420, 140, .06, .038, 'triangle');
       if (!authority()) send({t:'weapon',i,seq:++clientShot,spawn:p.spawnNo}, window.LAN.hostId);
       ui('hud',viewState());
@@ -400,6 +431,21 @@
     const up=p.kickUpSpeed+rate*p.kickUp, side=p.kickSideSpeed+rate*p.kickSide;
     p.kickUp=(p.kickUp+up*dt)*fall; p.kickUpSpeed=(p.kickUpSpeed-rate*up*dt)*fall;
     p.kickSide=(p.kickSide+side*dt)*fall; p.kickSideSpeed=(p.kickSideSpeed-rate*side*dt)*fall;
+  }
+  function cameraKick(p) {
+    return [p.kickSide*.020,p.kickUp*.022];
+  }
+  function eyePosition(p) {
+    return [p.x,p.feet+eyes+eyeBob(p),p.z];
+  }
+  function scopedEye(p) {
+    const actual=eyePosition(p), displayed=p===self?round.presentedEye:p.scopedEye;
+    if (!displayed) return actual;
+    const delta=displayed.map((v,i)=>v-actual[i]), distance=Math.hypot(...delta);
+    // Only reconcile sub-frame travel. A delayed position cannot move a shot to
+    // the other side of cover or back to the previous spawn.
+    if (distance>.30 || distance<.00001) return actual;
+    return wallDistance(actual,delta.map(v=>v/distance),distance)>=distance ? displayed : actual;
   }
   // Trigger edges are reliable room messages. Each machine schedules held fire on its
   // simulation clock so rendering frequency and packet batching cannot change the cadence.
@@ -449,8 +495,12 @@
     p.nextShot=next+interval; p.chain=continuous?Math.min(6,p.chain+1):0;
     p.lastShotAt=time; p.shotsFired++; p.mags[i]--; p.safeUntil=0;
     advanceKick(p,time);
-    const yawKick=p.kickSide*.020,pitchKick=p.kickUp*.022;
     const ads=p===self?aimHeld:p.ads;
+    const scoped=p.weapon===0 && ads;
+    // At 8× even one tick of spring decay is visible. Use the recoil offset
+    // that was on the shooter's screen, plus the latest mouse input.
+    const displayedKick=p===self?round.presentedKick:p.scopedKick;
+    const [yawKick,pitchKick]=scoped && displayedKick ? displayedKick : cameraKick(p);
     const force=gun.kick*(ads ? .68 : 1)*(1+p.chain*.045);
     p.kickUp+=.085; p.kickUpSpeed=Math.min(49,p.kickUpSpeed+force);
     const sway=Math.sin(p.shotsFired*2.12+p.weapon)*.62+Math.sin(p.shotsFired*.77)*.38;
@@ -463,7 +513,7 @@
     const jitter=gun.spread*(ads ? .33 : 1)*Math.min(1,p.chain/3);
     const yaw=p.yaw+yawKick+(Math.random()-.5)*jitter*2;
     const pitch=p.pitch+pitchKick+(Math.random()-.5)*jitter*2;
-    const origin=[p.x,p.feet+eyes+eyeBob(p),p.z];
+    const origin=scoped?scopedEye(p):eyePosition(p);
     resolveImpact(p,time,traceAttack(p,origin,yaw,pitch,80,attackViewTime(p)));
   }
   function finishSwing(p,time) {
@@ -633,6 +683,9 @@
     if (!p.hp || ![m.x,m.z,m.yaw,m.pitch,m.feet].every(Number.isFinite)) return;
     if (Number.isFinite(m.seenAt)) p.sightDelay=clamp(round.time-m.seenAt,0,maxRewind);
     if (Number.isFinite(m.eyeBob)) p.eyeBob=clamp(m.eyeBob,-.024,.024);
+    p.scopedKick=m.ads && Array.isArray(m.kick) && m.kick.length===2 && m.kick.every(Number.isFinite)
+      ? [clamp(m.kick[0],-.12,.12),clamp(m.kick[1],0,.18)] : null;
+    p.scopedEye=m.ads && Array.isArray(m.eye) && m.eye.length===3 && m.eye.every(Number.isFinite) ? m.eye : null;
     const dt=clamp(now()-(p.poseAt ?? now()),0,.8);
     const dx=m.x-p.x, dz=m.z-p.z, len=Math.hypot(dx,dz);
     const step=Math.min(1, (7*dt+.10)/(len || 1));
@@ -692,7 +745,8 @@
   }
   function poseMessage() {
     return {x:self.x,z:self.z,yaw:self.yaw,pitch:self.pitch,feet:self.feet,ads:aimHeld,spawn:self.spawnNo,
-      seenAt:localShotTime(),eyeBob:eyeBob(self)};
+      seenAt:localShotTime(),eyeBob:eyeBob(self),kick:scopeActive()?round.presentedKick??cameraKick(self):undefined,
+      eye:scopeActive()?round.presentedEye:undefined};
   }
   function hello() {
     send({t:'hello',name:self.name,weapon:self.weapon},window.LAN.hostId);
@@ -765,8 +819,11 @@
         reload:reloadProgress(p,time),reloadEmpty:p.reloadEmpty,shotSerial:p.shotsFired,shotAge:Math.max(0,time-p.lastShotAt),
         deathAge:age,deathYaw:p.deathYaw};
     });
+    const [yawKick,pitchKick]=cameraKick(self), fov=fieldOfView();
     return {x:self.x,z:self.z,y:actorFeet(self,deathAge)+eyes-deathDrop+eyeBob(self),
-      yaw:self.yaw+self.kickSide*.020,pitch:self.pitch+self.kickUp*.022-deathDrop*.095,weapon:self.weapon,weaponName:g.name,ammo:self.mags[self.weapon],
+      yaw:self.yaw+yawKick,pitch:self.pitch+pitchKick-deathDrop*.095,weapon:self.weapon,weaponName:g.name,ammo:self.mags[self.weapon],
+      fov,scopeZoom,scopeActive:scopeActive(),scopeBlend:self.weapon===0 && phase==='playing' ? scopeBlend : 0,
+      scopeMagnification:self.weapon===1?hipHalfTangent/Math.tan(fov*Math.PI/360):scopeScale,
       reserve:self.stock[self.weapon],maxAmmo:g.cap,hp:self.hp,kills:self.kills,deaths:self.deaths,
       secondsLeft:Math.max(0,Math.ceil(round.remaining)),respawnLeft:Math.ceil(secondsToSpawn),
       invulnerable:self.safeUntil>time,time,recoil:clamp(self.kickUp,0,1.5),recoilSide:clamp(self.kickSide,-1,1),
@@ -794,10 +851,14 @@
     killConfirm=Math.max(0,killConfirm-dt);
     hurt=Math.max(0,hurt-dt); hit=Math.max(0,hit-dt);
     aim+=((aimHeld && self.hp>0 && !self.reloadAt ? 1 : 0)-aim)*(1-Math.exp(-dt*15));
+    updateScope(n);
     const displayTime=renderTime(), state=viewState(displayTime);
     window.Arena.draw(state);
     round.presentedAt=displayTime;
+    round.presentedKick=cameraKick(self);
+    round.presentedEye=[state.x,state.y,state.z];
     if (window.Weapon) window.Weapon.draw(overlay,state);
+    ui('scope',state);
     if (n-lastHUD>1/30) { ui('hud',state); lastHUD=n; }
   }
   function ensureRenderer() {
@@ -820,7 +881,7 @@
   }
   function look(dx,dy) {
     if (!self || !Number.isFinite(dx) || !Number.isFinite(dy)) return;
-    const sensitivity=(1-aim*.45)*.0021;
+    const sensitivity=.0021*(self.weapon===0 ? 1/scopeScale : 1-aim*.45);
     self.yaw+=dx*sensitivity;
     self.pitch=clamp(self.pitch-dy*sensitivity,-1.3,1.3);
   }
@@ -897,6 +958,11 @@
     if (e.repeat) return;
     if (e.code==='Space') jumpPressed=true;
     if (e.code==='KeyR') beginReload(self);
+    if (e.code==='KeyV' && self.weapon===0) {
+      scopeZoom=scopePowers[(scopePowers.indexOf(scopeZoom)+1)%scopePowers.length];
+      updateScope(now());
+      ui('hud',viewState());
+    }
     if (e.code==='KeyQ') changeWeapon(self,self.previousWeapon);
     if (e.code==='KeyB') {
       if (self.weapon===0) changeFireMode(self,self.modes[0]==='auto'?'semi':'auto');
@@ -918,14 +984,14 @@
     }
     // The first click in an automatically opened match activates mouse look.
     // A restricted browser can still use click-and-drag if pointer lock was denied.
-    if (!controlsEngaged) { controlsEngaged=true; ui('hud',viewState()); return; }
+    if (!controlsEngaged) { controlsEngaged=true; ui('hud',viewState()); if (e.button===0) return; }
     if (e.button===0) { fireHeld=true; setTrigger(self,true); }
-    if (e.button===2) { aimHeld=!guns[self.weapon].melee; e.preventDefault(); }
+    if (e.button===2) { aimHeld=!guns[self.weapon].melee; updateScope(now()); e.preventDefault(); }
   });
   document.addEventListener('mouseup',e=>{
     if (!e.buttons) drag=null;
     if (e.button===0 && self) {fireHeld=false;setTrigger(self,false);}
-    if (e.button===2) aimHeld=false;
+    if (e.button===2) { aimHeld=false; if (round) updateScope(now()); }
   });
   document.addEventListener('mousemove',e=>{
     if (phase!=='playing') return;

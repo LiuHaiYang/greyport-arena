@@ -63,7 +63,7 @@ try {
   assert.equal(reuse.status,0,'rerunning the command should reuse the running service');
   assert(!reuse.stdout.includes('map=rail'),'a second listener must not start');
   const identity=await fetch(url+'/api/identity',{headers:{Origin:'null'}});
-  assert.deepEqual(await identity.json(),{game:'greyport-arena',directPlay:3});
+  assert.deepEqual(await identity.json(),{game:'greyport-arena',directPlay:4});
   assert.equal(identity.headers.get('access-control-allow-origin'),'null');
   assert.equal((await fetch(url+'/api/rooms',{headers:{Origin:'null'}})).headers.get('access-control-allow-origin'),null);
   assert.equal((await fetch(url+'/api/identity',{headers:{Origin:'https://example.org'}})).headers.get('access-control-allow-origin'),null);

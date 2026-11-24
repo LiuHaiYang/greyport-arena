@@ -71,16 +71,22 @@
         box(s*(w/2+.015),y,z,.004,.007,.030,mat.light,0,false);
       }
     }
-    function optical(y,z,small=false){
-      const width=small?.19:.28, height=small?.13:.205;
-      box(0,y-.025,z,width+.027,.068,.22,mat.dark);
-      box(0,y+.015,z,width,.036,.15,mat.iron,.007);
-      for(const s of [-1,1]){
-        box(s*(width/2-.015),y+height/2,z,.034,height,.15,mat.black,.016);
-        box(s*(width/2-.015),y+height*.86,z-.076,.017,.026,.008,mat.glass,0);
+    function optical(y,z){
+      const center=y+.136;
+      for(const offset of [-.11,.12]){
+        box(0,y-.007,z+offset,.18,.102,.073,mat.iron,.011);
+        tube([0,center,z+offset-.035],[0,center,z+offset+.035],.116,.116,mat.plate,16);
       }
-      box(0,y+height,z,width-.018,.035,.145,mat.iron,.01);
-      return y+height*.52;
+      tube([0,center,z-.31],[0,center,z+.25],.103,.101,mat.black,20);
+      tube([0,center,z-.38],[0,center,z-.29],.130,.106,mat.iron,20);
+      tube([0,center,z+.19],[0,center,z+.31],.101,.135,mat.iron,20);
+      for(const d of [-.38,.31]){
+        const side=Math.sign(d),end=z+d;
+        tube([0,center,end],[0,center,end+side*.018],.136,.136,mat.dark,24);
+        tube([0,center,end+side*.018],[0,center,end+side*.020],.103,.103,'#324951',24);
+      }
+      tube([0,center+.074,z+.017],[0,center+.145,z+.017],.055,.061,mat.iron,12);
+      return center;
     }
     let tip, eye, rear, supportZ;
     if(index===0){
@@ -515,7 +521,7 @@
       gl.drawArrays(gl.TRIANGLES,0,entry.count);
       return point=>{const p=rotate(point,m),z=p[2]+pos[2];return [w/2+f*(p[0]+pos[0])/z,h/2-f*(p[1]+pos[1])/z];};
     }
-    const gpu={draw,clear};accelerators.set(canvas,gpu);return gpu;
+    const gpu={draw,clear,layer};accelerators.set(canvas,gpu);return gpu;
   }
   function flash(ctx,x,y,r,serial,strength){
     ctx.save();ctx.translate(x,y);ctx.globalCompositeOperation='lighter';
@@ -566,9 +572,22 @@
   }
   function draw(canvas,s){
     if(!canvas||!s)return;
+    const scope=s.weapon===0?clamp(s.scopeBlend||0,0,1):0;
+    const visibility=s.hp?1-ease(.06,.78,scope):0;
+    const opacity=visibility<=.001?'0':visibility>=.999?'':String(Math.round(visibility*1000)/1000);
+    const changed=canvas.style.opacity!==opacity;
+    if(changed)canvas.style.opacity=opacity;
+    const previous=accelerators.get(canvas);
+    if(previous&&previous.layer.style.opacity!==opacity)previous.layer.style.opacity=opacity;
+    // The lens is drawn by the HUD over the world camera. Stop both foreground passes inside it.
+    if(visibility<=.001){
+      if(changed){previous?.clear();canvas.getContext('2d').clearRect(0,0,canvas.width,canvas.height);}
+      activeModels.delete(canvas);return;
+    }
     const target=surface(canvas), {ctx,w,h}=target;
     const gpu=accelerator(canvas);
-    if(!s.hp || w<2||h<2){gpu?.clear();return;}
+    if(gpu&&!previous)gpu.layer.style.opacity=opacity;
+    if(w<2||h<2){gpu?.clear();return;}
     const model=models[s.weapon]||models[0],t=s.time||0;
     const key=lightInView(s.yaw||0,s.pitch||0),f=h*.88,exposure=window.Arena?.viewExposure??1;
     if(model.index===2){
@@ -593,11 +612,6 @@
     const slide=Math.max(s.flash||0,pose.finish*.8)*(model.index===1?.19:.075);
     const projected=gpu?gpu.draw(model,m,pos,f,w,h,pose,slide,key,exposure):
       render(model,{...target,m,pos,f,cx:w*.5,cy:h*.5,preview:false,pose,slide,key,exposure});
-    if(a>.72&&model.index===0){
-      const x=w*.5,y=h*.5,r=Math.max(1,h*.00145);
-      ctx.fillStyle='rgba(126,238,205,'+((a-.72)/.28)+')';
-      ctx.beginPath();ctx.arc(x,y,r,0,TAU);ctx.fill();
-    }
     if(s.flash>0){
       const tip=projected([0,model.index===1?.12:.055,model.tip+.07]);
       flash(ctx,tip[0],tip[1],h*(model.index===1?.042:.061)*(.72+s.flash*.48),s.shotSerial||0,s.flash);

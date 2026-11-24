@@ -2,17 +2,17 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
-function readGame() {
-  if (!process.argv.includes('--html')) return fs.readFileSync(__dirname + '/../src/game.js','utf8');
+function readModule(file,assignment) {
+  if (!process.argv.includes('--html')) return fs.readFileSync(__dirname + '/../src/'+file,'utf8');
   const html = fs.readFileSync(__dirname + '/../index.html','utf8');
   const blocks = [...html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)];
-  const games = blocks.filter(([,code])=>/window\.Game\s*=\s*\{/.test(code));
-  assert.equal(games.length,1,'single-file build must expose one game entry point');
-  return games[0][1];
+  const modules = blocks.filter(([,code])=>assignment.test(code));
+  assert.equal(modules.length,1,'single-file build must expose one '+file+' module');
+  return modules[0][1];
 }
-const script = readGame();
+const script = readModule('game.js',/window\.Game\s*=\s*\{/);
 
-function scenario(shooterId, mapId, testLoadout=false) {
+function scenario(shooterId, mapId, extraChecks) {
   const clients = new Map();
   const packets = [];
   let clock = 100000;
@@ -22,7 +22,7 @@ function scenario(shooterId, mapId, testLoadout=false) {
     const win = {};
     const order = [];
     const canvases = {scene:{}, weapon:{}};
-    const client = {id, order, feed:[], frames:0, lockRequests:0, audioRequests:0};
+    const client = {id, order, feed:[], frames:0, lockRequests:0, audioRequests:0, random:.5};
     canvases.scene.requestPointerLock = () => {
       client.lockRequests++;
       document.pointerLockElement=canvases.scene;
@@ -49,6 +49,7 @@ function scenario(shooterId, mapId, testLoadout=false) {
       send(body,to) {
         const message=structuredClone(body);
         if (id==='H' && message.t==='state') client.broadcast=message;
+        if (id==='H' && message.t==='event' && message.e.kind==='shot') client.lastShot=message.e;
         packets.push({id,body:message,to,arrival:clock+oneWayDelay});
       },
       onMessage(fn) { client.receive=fn; return ()=>{client.receive=null}; },
@@ -65,7 +66,7 @@ function scenario(shooterId, mapId, testLoadout=false) {
     const window = {Arena, LAN, UI:ui, addEventListener(event,fn){win[event]=fn;},
       AudioContext:class {constructor(){client.audioRequests++;throw Error('No audio device in test');}}};
     const math = Object.create(Math);
-    math.random = () => .5;
+    math.random = () => client.random;
     const context = vm.createContext({window, document, performance:{now:()=>clock}, Math:math,
       requestAnimationFrame(fn){client.render=fn;return 1;}, cancelAnimationFrame(){},
       setInterval(fn){client.tick=fn;return 1;}, clearInterval(){}, console
@@ -75,6 +76,8 @@ function scenario(shooterId, mapId, testLoadout=false) {
     client.lan = LAN;
     client.arena = Arena;
     client.press = down=>dom[down?'mousedown':'mouseup']({button:0,buttons:down?1:0,target:canvases.scene});
+    client.right = down=>dom[down?'mousedown':'mouseup']({button:2,buttons:down?2:0,target:canvases.scene,preventDefault(){}});
+    client.moveMouse = (movementX,movementY)=>dom.mousemove({movementX,movementY});
     client.look = (yaw,pitch)=>{
       assert.equal(document.pointerLockElement,canvases.scene);
       const state=client.game.state;
@@ -82,7 +85,7 @@ function scenario(shooterId, mapId, testLoadout=false) {
       dom.mousemove({movementX:yawDelta/.0021,movementY:(state.pitch-pitch)/.0021});
     };
     client.blur = ()=>win.blur();
-    client.key = (down,code)=>dom[down?'keydown':'keyup']({code,target:canvases.scene,preventDefault(){}});
+    client.key = (down,code,repeat=false)=>dom[down?'keydown':'keyup']({code,repeat,target:canvases.scene,preventDefault(){}});
     client.wheel = deltaY=>dom.wheel({deltaY,target:canvases.scene,preventDefault(){}});
     clients.set(id, client);
     return client;
@@ -163,9 +166,9 @@ function scenario(shooterId, mapId, testLoadout=false) {
     assert.equal(shooter.view.actors[0].hp,hp,'shooter’s displayed opponent health');
     assert.equal(authoritativeHp(),hp,'host simulation health');
   }
-  if (testLoadout) {
+  if (extraChecks) {
     oneWayDelay=50;
-    verifyLoadout({shooter,target,clients,advance,aimAtTarget,bothSeeHp,tap});
+    extraChecks({shooter,target,clients,advance,aimAtTarget,bothSeeHp,tap});
     return;
   }
   target.press(true); target.press(false);
@@ -376,7 +379,10 @@ function verifyLoadout({shooter,target,clients,advance,aimAtTarget,bothSeeHp,tap
   console.log(shooter.id+' loadout: rifle/pistol/knife, number keys, Q, wheel, cancelled reloads, networked swings, cover, reach, cooldown and respawn shield passed.');
 }
 
-scenario('H','rail');
-scenario('G','warehouse');
-scenario('H','dock',true);
-scenario('G','rail',true);
+if (require.main===module) {
+  scenario('H','rail');
+  scenario('G','warehouse');
+  scenario('H','dock',verifyLoadout);
+  scenario('G','rail',verifyLoadout);
+}
+module.exports={scenario,readModule};

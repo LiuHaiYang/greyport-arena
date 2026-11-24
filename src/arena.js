@@ -46,6 +46,7 @@ window.Arena = (() => {
 
   let gl,canvas,program,sky,shadowProgram,staticMesh,actorMesh,skyBuf,terrain,decals,occlusionMap,shadowTex,shadowFB,shadowSize;
   let skyMap,skyMapReady=false;
+  let viewportLimit,anisotropy,maxAnisotropy=1;
   // One calibration aligns the sun disk, directional light, shadow map and water reflection.
   const skyPhoto={sunU:.680,sunV:.391,horizonV:.557,azimuth:-17*Math.PI/180,elevation:21*Math.PI/180};
   const sunDirection=Object.freeze([Math.sin(skyPhoto.azimuth)*Math.cos(skyPhoto.elevation),
@@ -583,6 +584,9 @@ window.Arena = (() => {
     else drawYard();
     return new Float32Array(mesh);
   }
+  function textureDetail(samples){
+    if(anisotropy)gl.texParameterf(gl.TEXTURE_2D,anisotropy.TEXTURE_MAX_ANISOTROPY_EXT,Math.min(samples,maxAnisotropy));
+  }
   function makeNoise(){
     const size=256,img=new Uint8Array(size*size*4), tiled=[];
     for(const n of [4,8,16,32,64,128]){
@@ -600,7 +604,7 @@ window.Arena = (() => {
     }
     const t=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,t);gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,size,size,0,gl.RGBA,gl.UNSIGNED_BYTE,img);
     gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR_MIPMAP_LINEAR);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
-    gl.generateMipmap(gl.TEXTURE_2D);return t;
+    gl.generateMipmap(gl.TEXTURE_2D);textureDetail(2);return t;
   }
   function makeOcclusion(){
     // Static contact shadow and dirt mask, sampled by the arena pavement.
@@ -646,6 +650,7 @@ window.Arena = (() => {
     const t=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,t);gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,false);
     gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,atlas);gl.generateMipmap(gl.TEXTURE_2D);
     gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR_MIPMAP_LINEAR);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
+    textureDetail(4);
     return t;
   }
   function makeSkyTexture(){
@@ -862,6 +867,9 @@ window.Arena = (() => {
     if(gl&&canvas===cvs&&!gl.isContextLost())return true;
     canvas=cvs;gl=cvs.getContext('webgl',{antialias:true,alpha:false,depth:true,stencil:true,preserveDrawingBuffer:false,powerPreference:'high-performance'});
     if(!gl)throw new Error('此浏览器无法建立 WebGL 图形上下文');
+    viewportLimit=gl.getParameter(gl.MAX_VIEWPORT_DIMS);
+    anisotropy=gl.getExtension('EXT_texture_filter_anisotropic');
+    maxAnisotropy=anisotropy?gl.getParameter(anisotropy.MAX_TEXTURE_MAX_ANISOTROPY_EXT):1;
     program=locations(shaderProgram(vert,frag),['aP','aN','aC','aU','aM'],[...common,'eye','atlas','depthTex','texel','aoMap','skyMap','skyReady']);
     sky=locations(shaderProgram(skyVert,skyFrag),['vert'],[...common,'skyMap','skyReady']);
     shadowProgram=locations(shaderProgram('attribute vec3 aP;'+shadowCoords+'void main(){gl_Position=vec4(lightSpace(aP),1.);}',
@@ -1375,10 +1383,10 @@ function buildOperatorGun(b,look,index) {
   b.box(0,.040,rear,.047,.094,.009,grip,13);
   b.beam([0,.031,-.043],[0,.001,-.039],.0047,dark,13,6);
   b.beam([0,.001,-.039],[0,-.005,.002],.0047,dark,13,6);
-  // Open optical frame retains a readable sight silhouette at a distance.
-  b.box(0,.102,-.066,.033,.011,.054,dark,13);
-  for(const s of [-1,1])b.box(s*.015,.123,-.074,.006,.032,.033,metal,13);
-  b.box(0,.141,-.074,.036,.006,.033,metal,13);
+  b.box(0,.101,-.074,.032,.018,.072,dark,13);
+  b.beam([0,.124,-.145],[0,.124,-.010],.020,metal,13,12);
+  for(const z of [-.145,-.016])b.beam([0,.124,z],[0,.124,z+.008],.024,dark,13,12);
+  b.beam([0,.142,-.068],[0,.153,-.068],.010,metal,13,8);
 }
 
   const operatorBones = Object.freeze([
@@ -1749,6 +1757,7 @@ function buildOperatorGun(b,look,index) {
       gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,false);
       gl.texImage2D(gl.TEXTURE_2D,0,gl.RGB,gl.RGB,gl.UNSIGNED_BYTE,faceImage);
       gl.generateMipmap(gl.TEXTURE_2D);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR_MIPMAP_LINEAR);
+      textureDetail(2);
       gl.activeTexture(gl.TEXTURE0);
     }
     if(faceImage.complete&&faceImage.naturalWidth)uploadPortrait();else faceImage.onload=uploadPortrait;
@@ -1874,6 +1883,7 @@ function buildOperatorGun(b,look,index) {
   }
   function drawOperators(s,t,right,up,forward,proj){
     const roster=s.actors||[],live=[];
+    const detailThreshold=115-40*(s.scopeBlend||0);
     for(const a of roster){
       if((a.alive===false&&(!Number.isFinite(a.deathAge)||a.deathAge>=2.2))||
         !Number.isFinite(a.x)||!Number.isFinite(a.z)){operatorMotion.delete(a.id);continue;}
@@ -1883,7 +1893,10 @@ function buildOperatorGun(b,look,index) {
       const vertical=Math.abs(dx*up[0]+dy*up[1]+dz*up[2]);
       if(depth< -2.2 || horizontal>Math.max(0,depth)/proj[0]+2.2 || vertical>Math.max(0,depth)/proj[1]+2.2)continue;
       const pixels=canvas.height*proj[1]*.9/Math.max(1,depth);
-      live.push([a,sampleMotion(a,t),pixels<115]);
+      const motion=sampleMotion(a,t);
+      // Compare projected height in this camera, with a band to keep mesh changes stable.
+      motion.detailed=pixels>detailThreshold*(motion.detailed?.88:1);
+      live.push([a,motion,!motion.detailed]);
     }
     for(const id of operatorMotion.keys())if(!roster.some(a=>(a.id??a.name??'operator')===id))operatorMotion.delete(id);
     if(!live.length)return;
@@ -1961,8 +1974,11 @@ function buildOperatorGun(b,look,index) {
   }
   function draw(s){
     if(!gl||gl.isContextLost())return;
-    const px=Math.min(1.65,window.devicePixelRatio||1,1750/Math.max(canvas.clientWidth,1));
-    const w=Math.max(1,Math.round(canvas.clientWidth*px)),h=Math.max(1,Math.round(canvas.clientHeight*px));
+    // Keep one native-resolution scene target through changes of magnification.
+    const cssWidth=Math.max(1,canvas.clientWidth),cssHeight=Math.max(1,canvas.clientHeight);
+    const px=Math.min(window.devicePixelRatio||1,2,2560/Math.max(cssWidth,cssHeight),
+      viewportLimit[0]/cssWidth,viewportLimit[1]/cssHeight,Math.sqrt((2304*1296)/(cssWidth*cssHeight)));
+    const w=Math.max(1,Math.round(cssWidth*px)),h=Math.max(1,Math.round(cssHeight*px));
     if(canvas.width!==w||canvas.height!==h){canvas.width=w;canvas.height=h;}
     let fov=s.fov||(72-16*(s.aim||0));if(fov>3.14)fov*=Math.PI/180;
     const py=1/Math.tan(fov/2),pp=[py*h/w,py],yaw=s.yaw||0,pitch=s.pitch||0,t=s.time||0;

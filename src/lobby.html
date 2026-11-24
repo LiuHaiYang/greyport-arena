@@ -4,6 +4,14 @@
 <style>/*__STYLE__*/</style></head>
 <body data-screen="connecting">
 <div id="battle"><canvas id="scene"></canvas><canvas id="weapon"></canvas>
+ <div id="scopeView" aria-hidden="true" hidden><div id="scopeLens">
+  <svg class="scopeReticle" viewBox="-100 -100 200 200" focusable="false">
+   <path class="reticlePosts" d="M-100,-1.2H-46L-42,0 -46,1.2H-100Z M100,-1.2H46L42,0 46,1.2H100Z M-1.2,100V46L0,42 1.2,46V100Z"/>
+   <path class="reticleLine" d="M-46,0H-1.6 M1.6,0H46 M0,-98V-1.6 M0,1.6V46 M-12,-1.1V1.1 M12,-1.1V1.1 M-1.1,12H1.1"/>
+   <circle class="reticleDot" cx="0" cy="0" r=".46"/>
+  </svg>
+  <div class="scopeReadout"><strong id="lensPower">2×</strong><kbd>V</kbd></div>
+ </div></div>
  <p id="entryStatus" role="status">正在进入战区…</p>
  <div id="hud"><div class="topleft"><canvas id="radar" width="180" height="135"></canvas><div class="radartag"><i data-i="pin"></i><span id="radarMap"></span></div></div>
  <div class="clock"><span>自由混战</span><b id="timer">05:00</b></div><div class="topright"><button id="shareMatch" class="hudbtn sharebtn" type="button"><i data-i="network"></i> 分享对局</button> <button id="pause" class="hudbtn" title="战斗菜单（Esc）" aria-label="战斗菜单"><i data-i="pause"></i></button><div id="killfeed"></div></div>
@@ -13,6 +21,7 @@
  <div class="vitals"><div class="healthrow"><i data-i="medical"></i><b id="hp">100</b><small>HP</small></div><div class="healthtrack"><b id="hpbar"></b></div><div class="scoreline"><span>击败 <b id="kills">0</b></span><span>阵亡 <b id="deaths">0</b></span></div></div>
  <div class="munition"><div id="weapLabel">AR-24</div><div id="ammoLine"><b id="ammo">30</b> <span>/</span> <em id="reserve">120</em></div><div id="knifeAction" hidden>左键挥刀</div>
  <div id="fireSetting"><i class="burstGlyph" aria-hidden="true"><i></i><i></i><i></i></i><strong id="fireModeLabel">连发</strong><kbd id="fireModeKey">B</kbd></div>
+ <div id="opticSetting"><span>倍镜</span><strong id="scopePower">2×</strong><kbd>V</kbd></div>
  <div id="reloadMeter" hidden><small id="gunstatus">换弹中</small><div class="reloadTrack"><i id="reloadFill"></i></div></div>
  <div id="weaponSlots" aria-label="武器快捷键"><small class="equipped">1 步枪</small><small>2 手枪</small><small>3 刀</small></div></div>
  <div id="fieldHint"><strong>点击画面控制视角</strong><span>WASD 移动 · 左键攻击 · Q 切回上一把 · Esc 菜单</span></div>

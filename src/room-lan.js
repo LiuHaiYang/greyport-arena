@@ -36,7 +36,7 @@
     try {
       const r=await fetch(origin+'/api/identity',{signal:abort.signal,credentials:'omit',cache:'no-store',redirect:'error'});
       const info=r.ok?await r.json():null;
-      return info?.game==='greyport-arena'&&info.directPlay===3?origin:'';
+      return info?.game==='greyport-arena'&&info.directPlay===4?origin:'';
     } catch { return ''; }
     finally { clearTimeout(timeout); }
   }

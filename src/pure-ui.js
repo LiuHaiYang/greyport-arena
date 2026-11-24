@@ -26,7 +26,7 @@
   dlg.addEventListener('click',e=>{if(e.target!==dlg)return;const r=dlg.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)closeModal()});
   if(stored('sound','on')==='off')Game.setSound(false);
   function help(){
-    const keys=[['突击步枪','1'],['手枪','2'],['刀','3'],['上一把武器','Q'],['循环切换武器','鼠标滚轮'],['开火 / 挥刀','鼠标左键'],['举枪瞄准','按住右键'],['步枪单发 / 连发','B'],['换弹','R'],['移动 / 疾跑','WASD / Shift'],['跳跃','空格'],['战斗菜单','Esc']];
+    const keys=[['突击步枪','1'],['手枪','2'],['刀','3'],['上一把武器','Q'],['循环切换武器','鼠标滚轮'],['开火 / 挥刀','鼠标左键'],['举枪瞄准 / 开镜','按住右键'],['步枪倍镜 2× / 4× / 8×','V'],['步枪单发 / 连发','B'],['换弹','R'],['移动 / 疾跑','WASD / Shift'],['跳跃','空格'],['战斗菜单','Esc']];
     showModal('help','FIELD MANUAL','操作指南','<div class="keylist">'+keys.map(([a,b])=>'<div>'+a+'<kbd>'+b+'</kbd></div>').join('')+'</div><p style="margin-top:16px">第一次点击画面后，移动鼠标转动视角。手枪每次点击打一发，持刀时每次点击挥一次。阵亡后 15 秒自动复活。</p>');
   }
   function armory(selected){
@@ -35,6 +35,7 @@
       [['弹匣容量',g.cap+' 发'],['基础伤害',g.damage],['射击模式',selected===0?'单发 / 连发':'单发'],
       ['射速上限',Math.round(60/(selected===0?g.delay:g.semiDelay))+' 发/分'],
       ['常规换弹',g.load.toFixed(2)+' 秒'],['空匣换弹',g.emptyLoad.toFixed(2)+' 秒']];
+    if(selected===0)stats.push(['可变倍镜','2× / 4× / 8×']);
     showModal('arm','LOADOUT','武器库','<div class="seg">'+guns.map((w,i)=>'<button data-gun="'+i+'" class="'+(i===selected?'chosen':'')+'">'+w.name+'</button>').join('')+'</div><canvas id="gunPreview"></canvas><div class="gunhead"><strong>'+g.name+'</strong><span>'+gunTypes[selected]+'</span></div><div class="gunstats">'+stats.map(([k,v])=>'<div>'+k+'<b>'+v+'</b></div>').join('')+'</div><div class="rowactions"><button class="bt primary" id="equip">'+(selected===equipped?'已选为出场武器':'设为出场武器')+'</button></div>');
     body.querySelectorAll('[data-gun]').forEach(b=>b.onclick=()=>armory(Number(b.dataset.gun)));
     $('equip').onclick=()=>{equipped=selected;store('loadout',slotIds[selected]);closeModal();notify('下次入场使用 '+g.name)};
@@ -173,6 +174,17 @@
     targetTimer=setTimeout(()=>{health.hidden=true;shownTarget=null;},Math.max(0,target.until*1000-performance.now()));
   }
   const slotLabels=[...$('weaponSlots').children];
+  const scopeLayer=$('scopeView'),hipCross=$('cross');
+  let scopeOpacity=0;
+  function scope(s){
+    const alpha=s && s.phase==='playing' && s.weapon===0 ? Math.round((s.scopeBlend||0)*1000)/1000 : 0;
+    if(alpha>0)text('lensPower',s.scopeZoom+'×');
+    if(alpha===scopeOpacity)return;
+    scopeOpacity=alpha;
+    scopeLayer.hidden=alpha===0;
+    scopeLayer.style.opacity=String(alpha);
+    hipCross.style.visibility=alpha>.15?'hidden':'';
+  }
   let activeSlot=-1;
   function hud(s){
     lastState=s;
@@ -186,6 +198,8 @@
       for(let i=0;i<slotLabels.length;i++)slotLabels[i].classList.toggle('equipped',i===activeSlot);
     }
     text('weapLabel',guns[s.weapon].name);
+    $('opticSetting').hidden=s.weapon!==0 || s.scopeBlend>.8;
+    if(s.weapon===0)text('scopePower',s.scopeZoom+'×');
     $('ammoLine').hidden=s.melee;$('knifeAction').hidden=!s.melee;$('fireSetting').hidden=s.melee;
     if(!s.melee){text('ammo',s.ammo);text('reserve',s.reserve);}
     const automatic=s.fireMode==='auto', reloading=s.reload>=0;
@@ -209,6 +223,7 @@
   }
   function screen(phase){
     document.body.dataset.screen=phase;
+    if(phase!=='playing')scope(null);
     $('entryStatus').hidden=true;
     if(phase==='menu'){lastState=null;closeModal();text('defeatedName','');$('elimination').classList.remove('visible');disconnected();return}
     if(phase==='playing'){$('matchOverlay').hidden=true;return}
@@ -232,7 +247,7 @@
   }
   $('pause').onclick=()=>Game.pause();$('shareMatch').onclick=share;
   LAN.onPeers(()=>{text('roomtag',roomLabel());if(document.body.dataset.screen==='paused')text('matchText',Arena.map.name+' · '+roomLabel())});
-  window.UI={screen,hud,vitals,notify,feed,elimination};
+  window.UI={screen,hud,scope,vitals,notify,feed,elimination};
   window.addEventListener('resize',()=>{if($('largePlot'))refreshPreview();if($('gunPreview'))Weapon.preview($('gunPreview'),Number(body.querySelector('.chosen')?.dataset.gun??0))});
   void enter(target).then(async()=>{
     if(!LAN.localOnly)return;
