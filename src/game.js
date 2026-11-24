@@ -13,6 +13,8 @@
   const crouchDrop=.52, crouchSeconds=.18;
   const hipFov=72, hipHalfTangent=Math.tan(hipFov*Math.PI/360);
   const scopePowers=[2,4,8], scopeTransitionSeconds=.18;
+  const inspectSeconds=1.4;
+  let inspectStarted=-Infinity;
   let scopeZoom=scopePowers[0], scopeScale=1, scopeFrom=1, scopeTo=1, scopeStarted=0;
   let scopeBlend=0, scopeBlendFrom=0;
   const keys = new Set();
@@ -69,6 +71,7 @@
     return 360/Math.PI*Math.atan(hipHalfTangent/scopeScale);
   }
   function clearInput() {
+    inspectStarted=-Infinity;
     keys.clear();
     wheelGesture.at=-1;
     if (self?.triggerHeld) setTrigger(self,false);
@@ -429,7 +432,7 @@
     p.nextShot = Math.max(p.nextShot, round.time + .22);
     resetKick(p);
     if (p === self) {
-      muzzle=0; fireHeld=false; aimHeld=false; aim=0;
+      muzzle=0; fireHeld=false; aimHeld=false; aim=0; inspectStarted=-Infinity;
       resetScope();
       tone(420, 140, .06, .038, 'triangle');
       if (!authority()) send({t:'weapon',i,seq:++clientShot,spawn:p.spawnNo}, window.LAN.hostId);
@@ -874,12 +877,13 @@
       const pose=p.hp>0?visiblePoseAt(p,displayTime):p;
       actors.push({id:p.id,name:p.name,x:pose.x,y:p.hp>0?pose.feet:actorFeet(p,age),z:pose.z,yaw:pose.yaw,pitch:pose.pitch,team:'enemy',alive:p.hp>0,
         ...motion(pose),switchProgress:clamp(1-(time-p.equippedAt)/.22,0,1),hurt:clamp(1-(time-p.hurtAt)/.28,0,1),
-        flash:p.hp>0 && !guns[p.weapon].melee && p.flashUntil>time,hp:p.hp,weapon:p.weapon,spawnNo:p.spawnNo,fireMode:p.modes[p.weapon],
+        flash:p.hp>0 && !guns[p.weapon].melee && p.flashUntil>time,hp:p.hp,weapon:p.weapon,ammo:p.mags[p.weapon],spawnNo:p.spawnNo,fireMode:p.modes[p.weapon],
         swingProgress:swingProgress(p,time),swingSerial:p.swings,
-        reload:reloadProgress(p,time),reloadEmpty:p.reloadEmpty,shotSerial:p.shotsFired,shotAge:Math.max(0,time-p.lastShotAt),
+        reload:reloadProgress(p,time),reloadEmpty:p.reloadEmpty,shotSerial:p.shotsFired,shotAge:p.lastShotAt>=p.equippedAt?Math.max(0,time-p.lastShotAt):Infinity,
         deathAge:age,deathYaw:p.deathYaw});
     }
     const [yawKick,pitchKick]=cameraKick(self), fov=fieldOfView();
+    const inspectElapsed=now()-inspectStarted;
     return {x:self.x,z:self.z,y:actorFeet(self,deathAge)+eyes-crouchDrop*self.crouch-deathDrop+eyeBob(self),
       feet:self.feet,...motion(self),
       yaw:self.yaw+yawKick,pitch:self.pitch+pitchKick-deathDrop*.095,weapon:self.weapon,weaponName:g.name,ammo:self.mags[self.weapon],
@@ -891,6 +895,8 @@
       flash:muzzle>0?muzzle/.065:0,hit,hurt,aim,killConfirm:clamp(killConfirm/.48,0,1),deathAge,
       targetFeedback:currentTarget(),
       fireMode:self.modes[self.weapon],canToggleFireMode:self.weapon===0,reloadEmpty:self.reloadEmpty,
+      shotAge:self.lastShotAt>=self.equippedAt?Math.max(0,time-self.lastShotAt):Infinity,
+      inspectProgress:inspectElapsed<inspectSeconds?inspectElapsed/inspectSeconds:-1,
       melee:!!g.melee,swingProgress:swingProgress(self,time),swingSerial:self.swings,
       reloadStage:reload<0?'':reload<.47?'取匣':reload<.86?'装匣':'就绪',
       bob,moving:walking,sprinting:running,reload,shotSerial,switchProgress:clamp(1-(time-self.equippedAt)/.22,0,1),
@@ -1007,7 +1013,9 @@
     keys.add(e.code);
     if (e.repeat) return;
     if (e.code==='Space') jumpPressed=true;
-    if (e.code==='KeyR') beginReload(self);
+    if (e.code==='KeyR') { inspectStarted=-Infinity; beginReload(self); }
+    if (e.code==='KeyF' && self.weapon===1 && !aimHeld && !fireHeld && !self.reloadAt &&
+        now()-inspectStarted>=inspectSeconds) inspectStarted=now();
     if (e.code==='KeyV' && self.weapon===0) {
       scopeZoom=scopePowers[(scopePowers.indexOf(scopeZoom)+1)%scopePowers.length];
       updateScope(now());
@@ -1027,6 +1035,7 @@
   document.addEventListener('mousedown',e=>{
     if (phase!=='playing' || !self || !clientReady || interactive(e.target) || document.querySelector('dialog[open]')) return;
     if (e.button!==0 && e.button!==2) return;
+    inspectStarted=-Infinity;
     wakeAudio();
     if (!document.pointerLockElement) {
       requestMouse();

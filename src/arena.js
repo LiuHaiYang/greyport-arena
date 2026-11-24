@@ -1356,17 +1356,39 @@ function buildOperatorGun(b,look,index) {
     return;
   }
   if(index===1){
-    profile([[.057,.048],[.047,.088],[-.161,.088],[-.178,.078],[-.176,.054],[-.145,.044]],.029,metal);
-    profile([[.054,.049],[.043,.059],[-.159,.057],[-.157,.030],[-.057,.028],[-.009,.040]],.028,grip);
-    profile([[.036,.048],[-.003,.044],[-.014,.032],[.004,-.065],[.045,-.072],[.052,-.054]],.032,molded);
-    profile([[.009,-.066],[.040,-.071],[.035,.008],[.003,.009]],.023,alloy,13.25);
-    b.box(0,-.070,.025,.035,.009,.042,dark,13.25);
-    b.beam([0,.073,-.164],[0,.073,-.184],.009,dark,13,10);
-    b.beam([0,.034,-.057],[0,.005,-.052],.0045,dark,13,6);
-    b.beam([0,.005,-.052],[0,-.007,.010],.0045,dark,13,6);
-    b.box(0,.093,-.151,.006,.009,.009,alloy,13);
-    b.box(0,.094,.034,.018,.010,.014,dark,13);
-    for(let i=0;i<4;i++)b.box(0,.070,.014+i*.008,.030,.019,.0025,dark,13);
+    const side=c('505e67'),edge=c('849097'),frame=c('625e51'),panel=c('383c38');
+    // The silhouette and the wide top bevel remain visible at multiplayer distances.
+    const shell=(z,w,bottom,top)=>[[-w,bottom,z],[w,bottom,z],[w,top-.009,z],
+      [w-.006,top,z],[-w+.006,top,z],[-w,top-.009,z]];
+    const rings=[shell(.051,.014,.052,.082),shell(.035,.019,.048,.091),
+      shell(-.145,.018,.048,.086),shell(-.175,.013,.055,.080)];
+    const faces=[dark,side,edge,c('687780'),edge,side];
+    const slideMaterial=13.4;
+    for(let i=1;i<rings.length;i++){
+      const a=rings[i-1],d=rings[i];
+      for(let j=0;j<6;j++){
+        const k=(j+1)%6;b.patch([a[j],d[j],d[k],a[k]],faces[j],slideMaterial);
+      }
+    }
+    b.patch(rings[0],side,slideMaterial);b.patch(rings[3].slice().reverse(),side,slideMaterial);
+    profile([[.056,.046],[.044,.056],[-.161,.050],[-.145,.032],[-.061,.027],[-.006,.038]],.033,frame);
+    profile([[.039,.047],[-.008,.041],[-.015,.022],[.008,-.060],[.047,-.072],[.058,-.057]],.035,frame);
+    profile([[.035,.025],[-.006,.018],[.012,-.054],[.045,-.062],[.051,-.049]],.037,panel);
+    profile([[.010,-.063],[.050,-.068],[.041,.012],[.007,.011]],.025,metal,13.25);
+    b.box(0,-.069,.031,.039,.009,.050,dark,13.25);
+    b.beam([0,.070,-.135],[0,.070,-.180],.009,metal,13,10);
+    b.beam([0,.035,-.063],[0,-.003,-.052],.0045,frame,13,6);
+    b.beam([0,-.003,-.052],[0,-.010,.003],.0045,frame,13,6);
+    for(const sign of [-1,1]){
+      for(let i=0;i<3;i++){
+        const z=.013-i*.009;
+        b.beam([sign*.019,.057,z+.004],[sign*.019,.073,z],.0015,dark,slideMaterial,4);
+      }
+      b.box(sign*.010,.094,.029,.006,.007,.010,dark,slideMaterial);
+      b.box(sign*.010,.095,.035,.003,.003,.0015,c('ddd5b8'),slideMaterial);
+    }
+    b.box(0,.089,-.145,.005,.008,.009,dark,slideMaterial);
+    b.box(0,.091,-.140,.003,.004,.002,c('efa94f'),slideMaterial);
     return;
   }
   profile([[.064,.091],[-.146,.091],[-.157,.080],[-.152,.043],[-.110,.023],[-.023,.020],[.060,.042]],.046,alloy);
@@ -1693,14 +1715,15 @@ function buildOperatorGun(b,look,index) {
   function initOperators(){
     const vs=`precision highp float;
       attribute vec3 aP,aN,aC;attribute float aM,aJoint;
-      uniform vec4 bones[48];uniform vec3 origin,eye,rightV,upV,forwardV,magShift;
+      uniform vec4 bones[48],weaponOffsets;uniform vec3 origin,eye,rightV,upV,forwardV;
       uniform vec2 heading,proj;uniform float planar,floorY;
       varying vec3 localPos,world,nor,color,lightUV;varying float mat;
       `+shadowCoords+`
       vec3 orient(vec3 p){return vec3(heading.x*p.x-heading.y*p.z,p.y,heading.y*p.x+heading.x*p.z);}
       void main(){
         int j=int(aJoint+.2)*3;vec4 p=vec4(aP,1.);
-        if(aM>13.2 && aM<13.3)p.xyz+=magShift;
+        if(aM>13.2 && aM<13.3)p.xyz+=weaponOffsets.xyz;
+        if(aM>13.35 && aM<13.45)p.z+=weaponOffsets.w;
         vec4 bx=bones[j],by=bones[j+1],bz=bones[j+2];
         world=origin+orient(vec3(dot(bx,p),dot(by,p),dot(bz,p)));
         nor=orient(vec3(dot(bx.xyz,aN),dot(by.xyz,aN),dot(bz.xyz,aN)));
@@ -1762,7 +1785,7 @@ function buildOperatorGun(b,look,index) {
         gl_FragColor=vec4(shaded*exposure,1.);
       }`;
     characterProgram=locations(shaderProgram(vs,fs),['aP','aN','aC','aM','aJoint'],
-      ['bones[0]','origin','eye','rightV','upV','forwardV','heading','proj','planar','floorY','style','grain','depthTex','portrait','exposure','coverage','magShift']);
+      ['bones[0]','origin','eye','rightV','upV','forwardV','heading','proj','planar','floorY','style','grain','depthTex','portrait','exposure','coverage','weaponOffsets']);
     operatorStencil=!!gl.getContextAttributes().stencil;
     operatorPortraitTex=gl.createTexture();gl.activeTexture(gl.TEXTURE4);gl.bindTexture(gl.TEXTURE_2D,operatorPortraitTex);
     gl.texImage2D(gl.TEXTURE_2D,0,gl.RGB,1,1,0,gl.RGB,gl.UNSIGNED_BYTE,new Uint8Array([174,132,105]));
@@ -1911,6 +1934,7 @@ function buildOperatorGun(b,look,index) {
       if(depth< -2.2 || horizontal>Math.max(0,depth)/proj[0]+2.2 || vertical>Math.max(0,depth)/proj[1]+2.2)continue;
       const pixels=canvas.height*proj[1]*.9/Math.max(1,depth);
       const motion=sampleMotion(a,t);
+      motion.slide=a.weapon===1 && a.alive!==false ? window.Weapon.pistolSlide(a)*.027 : 0;
       // Compare projected height in this camera, with a band to keep mesh changes stable.
       motion.detailed=pixels>detailThreshold*(motion.detailed?.88:1);
       live.push([a,motion,!motion.detailed]);
@@ -1936,7 +1960,7 @@ function buildOperatorGun(b,look,index) {
         const yaw=a.yaw||0,weapon=a.weapon??0;
         gl.uniform3f(p.origin,a.x,m.height,a.z);gl.uniform2f(p.heading,Math.cos(yaw),Math.sin(yaw));
         gl.uniform1f(p.coverage,m.coverage);
-        gl.uniform3fv(p.magShift,m.magShift);
+        gl.uniform4f(p.weaponOffsets,m.magShift[0],m.magShift[1],m.magShift[2],m.slide);
         gl.uniform4fv(p['bones[0]'],m.bones);gl.uniform1f(p.style,m.style);
         if(shadow)gl.uniform1f(p.floorY,0.);
         drawPart((shadow||distant?distantCharacters:characterBuffers)[m.style]);drawPart(firearmBuffers[weapon]);

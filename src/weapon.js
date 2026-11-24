@@ -126,26 +126,82 @@
       group='gun';
     } else if(index===1){
       rear=-.57;tip=.814;supportZ=-.16;
-      profile(0,.246,[[-.52,-.18],[-.27,-.238],[.25,-.205],[.65,-.11],[.68,.05],[-.48,.055]],mat.grip);
-      group='action';
-      profile(0,.28,[[-.55,.024],[.78,.024],[.814,.09],[.784,.228],[.64,.265],[-.45,.265],[-.57,.175]],mat.plate);
-      box(0,.231,.057,.237,.071,.92,mat.iron,.025);
-      for(let j=0;j<5;j++)sides(.134,-.46+j*.055,.287,.113,.022,mat.dark);
-      sides(.141,.258,.286,.074,.244,mat.dark);
-      for(const s of [-1,1])text(s*.143,.13,-.006,.059,.16,'P–12');
-      box(0,.277,-.421,.2,.064,.093,mat.black);
-      for(const s of [-1,1]){
-        box(s*.073,.328,-.421,.052,.064,.094,mat.dark);
-        box(s*.073,.329,-.47,.018,.019,.007,mat.glass,0);
+      const frame='#625e51',inset='#383c38',trim='#444b4e';
+      profile(0,.266,[[-.557,-.015],[-.49,-.09],[-.337,-.15],[.33,-.148],
+        [.69,-.098],[.747,-.044],[.747,.022],[-.48,.041]],frame);
+      profile(0,.230,[[.247,-.123],[.663,-.084],[.671,-.106],[.601,-.143],
+        [.325,-.173],[.261,-.165]],'#4b4d45');
+      // Sculpt the palm swell independently of the hard metal shoulder above it.
+      profile(0,.217,[[-.379,-.093],[-.175,-.10],[-.112,-.198],[-.157,-.294],
+        [-.231,-.60],[-.283,-.708],[-.447,-.705],[-.483,-.646],[-.446,-.418]],frame);
+      for(const side of [-1,1]){
+        profile(side*.098,.034,[[-.371,-.208],[-.201,-.191],[-.189,-.264],[-.281,-.634],
+          [-.316,-.661],[-.438,-.636],[-.425,-.53]],inset,false);
+        for(let i=0;i<5;i++){
+          const y=-.31-i*.056,z=-.252-i*.014;
+          profile(side*.116,.004,[[z-.08,y-.017],[z+.026,y+.014],[z+.023,y+.022],[z-.083,y-.006]],'#50534a',false);
+        }
+        profile(side*.133,.012,[[-.329,-.034],[-.299,-.063],[-.143,-.057],
+          [-.113,-.035],[-.122,-.018],[-.308,-.017]],trim,false);
+        tube([side*.132,-.061,.021],[side*.138,-.061,.021],.020,.018,'#424746',10);
       }
+      // A cut-through guard leaves daylight between the grip and the forward frame.
+      profile(0,.116,[[.109,-.122],[.202,-.115],[.194,-.216],[.151,-.295],[.09,-.33],[.063,-.3],[.114,-.251]],frame);
+      profile(0,.116,[[-.203,-.344],[.072,-.331],[.151,-.295],[.114,-.272],[-.181,-.292]],frame);
+      profile(0,.037,[[-.078,-.145],[-.032,-.144],[-.054,-.222],[-.098,-.261],
+        [-.109,-.257],[-.077,-.21]],'#333d3f',false);
+      group='action';
+      // Transverse sections form a continuous crown with distinct flank, bevel and top planes.
+      const sections=[
+        [rear,.113,.055,.201],[-.49,.146,.024,.253],[-.44,.15,.023,.264],
+        [.02,.15,.023,.264],[.052,.15,.023,.239],[.294,.15,.023,.239],
+        [.326,.15,.023,.264],[.586,.146,.025,.257],[.739,.134,.032,.232],[.788,.114,.053,.203]
+      ];
+      const rings=sections.map(([z,w,low,top])=>[
+        [-w+.020,low,z],[w-.020,low,z],[w,low+.021,z],[w,top-.065,z],
+        [w-.040,top-.017,z],[w-.074,top,z],[-w+.074,top,z],[-w+.040,top-.017,z],
+        [-w,top-.065,z],[-w,low+.021,z]
+      ]);
+      const planes=['#353e43','#68757b','#58666f','#7a8992','#96a3a9','#77858c','#96a3a9','#7a8992','#58666f','#68757b'];
+      face(rings[0],[0,0,-1],'#515c61');face(rings.at(-1),[0,0,1],'#687279');
+      for(let i=1;i<rings.length;i++){
+        const a=rings[i-1],b=rings[i];
+        for(let k=0;k<a.length;k++){
+          const j=(k+1)%a.length;
+          const chamber=i===5&&k>=4&&k<=6;
+          face([a[k],a[j],b[j],b[k]],[a[k][0]+a[j][0],a[k][1]+a[j][1]-.26,0],
+            chamber?'#7b7567':planes[k]);
+        }
+      }
+      for(const side of [-1,1]){
+        const x=side*.1506;
+        for(let i=0;i<5;i++){
+          const z=-.413+i*.048;
+          face([[x,.057,z],[x,.057,z+.020],[x,.182,z+.061],[x,.182,z+.041]],[side,0,0],'#323c42');
+          face([[x,.057,z+.020],[x,.057,z+.025],[x,.182,z+.066],[x,.182,z+.061]],[side,0,0],'#849096');
+        }
+        for(let i=0;i<3;i++){
+          const z=.39+i*.047;
+          const stripe=[[z,.074],[z+.014,.076],[z+.041,.145],[z+.027,.144]];
+          face(stripe.map(([d,y])=>[side*(.1505-.004*(d-.326)/.26),y,d]),[side,0,0],'#414d55');
+        }
+        // Keep the whole engraving on a single flank panel in the painter's-order preview.
+        text(x,.119,.173,.077,.217,'P–12');
+        profile(side*.069,.059,[[-.489,.249],[-.371,.25],[-.348,.268],[-.40,.325],[-.455,.341],[-.489,.333]],'#353d42',false);
+        tube([side*.066,.317,-.488],[side*.066,.317,-.491],.012,.012,'#e8dfc2',8);
+      }
+      profile(0,.165,[[-.484,.243],[-.345,.254],[-.352,.28],[-.481,.283]],'#3c474d',false);
+      for(let i=0;i<3;i++)box(0,.091+i*.031,rear-.001,.126,.012,.008,trim,.003,false);
       eye=.326;
-      box(0,.29,.68,.037,.073,.083,mat.dark);
-      box(0,.322,.64,.025,.021,.013,mat.stripe,0);
-      group='gun';barrel(.52,.819,.073,mat.dark,.12);
-      sides(-.047,.366,.25,.046,.24,mat.stripe);
+      profile(0,.045,[[.609,.241],[.716,.221],[.714,.247],[.664,.329],[.613,.329]],'#303b42');
+      box(0,.315,.608,.022,.029,.006,'#ffc076',.002,false);
+      group='gun';
+      barrel(.555,tip,.074,'#626b6e',.12);
+      tube([0,.12,tip],[0,.12,tip+.001],.055,.055,'#1b2429',12);
       group='mag';
-      profile(0,.118,[[-.386,-.635],[-.281,-.635],[-.221,-.239],[-.32,-.232]],mat.dark);
-      box(0,-.673,-.35,.203,.09,.253,mat.iron,.022);group='gun';
+      profile(0,.144,[[-.417,-.703],[-.287,-.697],[-.181,-.244],[-.32,-.237]],'#4c585b');
+      profile(0,.239,[[-.477,-.69],[-.281,-.688],[-.253,-.714],[-.268,-.749],
+        [-.466,-.755],[-.487,-.731]],trim);group='gun';
     } else {
       // Each cross-section catches the scene light separately along the blade's bevels.
       rear=-.43;tip=.04;eye=0;supportZ=0;
@@ -177,7 +233,7 @@
       box(0,-.729,-.24,.192,.017,.202,mat.stripe,.003);
     }
     const g=index===0?-.42:index===1?-.255:-.265;
-    if(index!==2){
+    if(index===0){
       profile(0,.185,[[g-.08,-.112],[g+.129,-.19],[g+.026,-.673],[g-.164,-.695],[g-.182,-.61]],mat.grip);
       for(let j=0;j<4;j++) sides(-.32-j*.079,g-.04-j*.012,.193,.025,.144,mat.dark);
       tube([0,-.28,g+.095],[0,-.428,g+.128],.018,.015,mat.light,6);
@@ -187,8 +243,10 @@
     // The sleeves and gloves share the muted fabric and leather finishes of the field uniform.
     function hand(left) {
       group=left?'support':'firing';
-      const s=left?-1:1, z=left?supportZ:g-.095;
-      const wrist=[s*(left?.285:.234),left?-.524:-.53,z-.24];
+      const pistol=index===1;
+      const s=left?-1:1, z=left?supportZ-(pistol?.05:0):g-.095;
+      const wrist=pistol?[s*(left?.32:.25),left?-.61:-.55,z-.29]:
+        [s*(left?.285:.234),left?-.524:-.53,z-.24];
       const elbow=[s*(left?1.02:.82),left?-1.53:-1.62,left?-.99:-1.2];
       const shell='#3c4c58',glove='#323532',suede='#514f46',binding='#444a46';
       function sweep(rings,base,sides=10){
@@ -235,7 +293,7 @@
       sweep([[arm(.916),.195,.180],[arm(.927),.192,.180],
         [arm(.957),.180,.168],[arm(.966),.172,.162]],binding,12);
       if(index===2)group='firing';
-      const palm=[s*(left?.191:.134),left&&index===0?-.225:-.391,z+.019];
+      const palm=[s*(left?.191:.134),pistol&&left?-.45:left&&index===0?-.225:-.391,z+.019];
       const half=wrist.map((v,j)=>mix(v,palm[j],.54));
       sweep([[wrist,.137,.125],[half,.143,.142,-.012],[palm,.130,.155,.009],
         [[palm[0],palm[1]+.043,palm[2]+.02],.095,.105]],glove,13);
@@ -253,8 +311,12 @@
             [[-.080,-.130+rise,fz+.028],.043,.036],[[-.071,-.092+rise,fz+.026],.017,.024]],glove,9);
           sweep([[[-.259,-.225,fz-.017],.028,.022],
             [[-.239,-.239,fz],.044,.025],[[-.209,-.243,fz+.006],.025,.019]],suede,8);
+        }else if(pistol&&!left&&i===0){
+          sweep([[[.184,-.327,z+.035],.046,.039],[[.172,-.277,z+.16],.047,.038],
+            [[.112,-.255,z+.24],.042,.035],[[.052,-.285,z+.26],.034,.031],
+            [[.035,-.303,z+.23],.022,.019]],glove,9);
         }else{
-          const y=-.331-i*.068;
+          const y=-.331-i*.068-(pistol&&left?.052:0);
           sweep([[[palmX+s*.072,y,z+.035],.044,.037],
             [[s*.158,y+.005,z+.137],.049,.038],[[s*.082,y+.010,z+.198],.045,.036],
             [[s*.009,y+.012,z+.198],.039,.033],[[-s*.032,y+.004,z+.181],.021,.022]],glove,9);
@@ -263,7 +325,8 @@
         }
       }
       const thumbRoot=[palmX+s*.022,palmY+.027,z-.10];
-      const thumbEnd=left&&index===0?[-.149,-.032,z+.09]:[s*.115,palmY+.146,z+.056];
+      const thumbEnd=left&&index===0?[-.149,-.032,z+.09]:
+        pistol&&left?[-.137,-.243,z+.15]:[s*.115,palmY+.146,z+.056];
       sweep([[thumbRoot,.067,.066],[[palmX+s*.047,palmY+.078,z-.094],.067,.058],
         [[palmX+s*.022,palmY+.127,z-.018],.055,.049],[thumbEnd,.042,.040],
         [[thumbEnd[0]-s*.013,thumbEnd[1]+.008,thumbEnd[2]+.021],.020,.027]],suede,10);
@@ -321,9 +384,13 @@
     const sweep=Math.sin(Math.PI*lower);
     const seat=ease(.664,.714,t)*(1-ease(.714,.785,t));
     const finish=(empty?1:.24)*ease(.76,.842,t)*(1-ease(.842,.945,t));
+    if(index===1){
+      const mag=[-.23*lower-.09*sweep,-.77*lower+.04*seat,-.27*lower];
+      const hand=[mag[0]+.055*grasp,mag[1]-.22*grasp+.075*finish,mag[2]-.12*grasp];
+      return {lift,seat,finish,mag,hand};
+    }
     const mag=[-.37*lower-.07*sweep,-.81*lower+.035*seat,-.23*lower];
-    const hand=[mag[0]-.036*grasp,mag[1]-(index===1?.22:.37)*grasp+.10*finish,
-      mag[2]-(index===1?.18:.43)*grasp-.12*finish];
+    const hand=[mag[0]-.036*grasp,mag[1]-.37*grasp+.10*finish,mag[2]-.43*grasp-.12*finish];
     return {lift,seat,finish,mag,hand};
   }
   function render(model,options){
@@ -354,11 +421,17 @@
       const pts=coords.map(project);
       if(pts.every(p=>p[0]<0)||pts.every(p=>p[0]>w)||pts.every(p=>p[1]<0)||pts.every(p=>p[1]>h))continue;
       const depth=coords.reduce((n,p)=>n+p[2],0)/coords.length;
-      rendered.push({face,normal,pts,depth});
+      let steelLight=0;
+      if(model.index===1 && face.group==='action' && !face.label){
+        const view=unit(first.map(v=>-v)),incidence=clamp(dot(normal,view),0,1);
+        const reflectedY=2*incidence*normal[1]-view[1];
+        steelLight=ease(45,108,face.base[1])*(.24+.76*ease(-.38,.72,reflectedY)+.38*(1-incidence)**3);
+      }
+      rendered.push({face,normal,pts,depth,steelLight});
     }
     rendered.sort((a,b)=>b.depth-a.depth);
     ctx.lineJoin='round';
-    for(const {face,normal,pts,depth} of rendered){
+    for(const {face,normal,pts,depth,steelLight} of rendered){
       if(face.label){
         const [a,b,,d]=pts;
         ctx.save();
@@ -369,7 +442,8 @@
       const light=Math.max(0,dot(normal,options.key||studioLight));
       const sky=Math.max(0,normal[1]);
       const lum=.65+.50*light+.09*sky;
-      const rgb=face.base.map((v,i)=>Math.round(clamp((v*lum+[11,7,0][i]*light+Math.max(0,normal[0])*[0,1,5][i])*(options.exposure??1),0,255)));
+      const rgb=face.base.map((v,i)=>Math.round(clamp((v*lum+[11,7,0][i]*light+Math.max(0,normal[0])*[0,1,5][i]
+        +steelLight*[24,31,38][i])*(options.exposure??1),0,255)));
       ctx.beginPath();ctx.moveTo(...pts[0]);for(let j=1;j<pts.length;j++)ctx.lineTo(...pts[j]);
       ctx.closePath();ctx.fillStyle='rgb('+rgb.join(',')+')';ctx.fill();
       // Subpixel seams remain closed between adjacent facets.
@@ -391,23 +465,24 @@
     const target=surface(canvas), {w,h}=target;
     if(w<2||h<2)return;
     const model=models[i]||models[0];
-    if(model.index===2){
-      const m=matrix(-1.34,-.08,-1.24),depth=8;
+    if(model.index!==0){
+      const pistol=model.index===1;
+      const m=pistol?matrix(-1.36,-.27,-.043):matrix(-1.34,-.08,-1.24),depth=8;
       let left=Infinity,right=-Infinity,top=-Infinity,bottom=Infinity;
       for(const face of model.faces){
-        if(face.group!=='gun')continue;
+        if(face.group!=='gun' && !(pistol && (face.group==='action'||face.group==='mag')))continue;
         for(const vertex of face.vertices){
           const [x,y,z]=rotate(vertex,m),u=x/(depth+z),v=y/(depth+z);
           left=Math.min(left,u);right=Math.max(right,u);top=Math.max(top,v);bottom=Math.min(bottom,v);
         }
       }
-      const f=Math.min(w*.77/(right-left),h*.72/(top-bottom));
+      const f=Math.min(w*(pistol?.84:.77)/(right-left),h*(pistol?.88:.72)/(top-bottom));
       render(model,{...target,m,pos:[0,0,depth],f,cx:w*.5-f*(right+left)*.5,cy:h*.5+f*(top+bottom)*.5,preview:true});
       return;
     }
     const m=matrix(-1.23,.075,.055);
     const mid=(model.tip+model.rear)*.5;
-    const len=model.tip-model.rear,depth=8,f=depth*Math.min(w*.84/len,h*.79/(i===1?1.08:1.36));
+    const len=model.tip-model.rear,depth=8,f=depth*Math.min(w*.84/len,h*.79/1.36);
     render(model,{...target,m,pos:[mid*.94,.215,depth],f,cx:w*.5,cy:h*.48,preview:true});
   }
   const accelerators=new WeakMap();
@@ -421,21 +496,21 @@
     const vs=`
       attribute vec3 position,normal,color; attribute vec2 surfaceUV,labelUV; attribute float part;
       uniform mat3 rotation,forearm; uniform vec3 translation,magOffset,handOffset; uniform vec2 scale; uniform float slide;
-      varying vec3 N,V,material,P; varying vec2 surf,label; varying float textile;
+      varying vec3 N,V,material,P; varying vec2 surf,label; varying float finishType;
       void main(){
         vec3 p=position,n=normal;
         if(part>.5 && part<1.5)p+=magOffset;
         else if(part>1.5 && part<2.5)p+=handOffset*smoothstep(-1.52,-.54,p.y);
-        else if(part>4.5){vec3 wrist=vec3(.234,-.53,-.60);p=wrist+forearm*(p-wrist);n=normalize(forearm*n);}
+        else if(part>4.5 && part<5.5){vec3 wrist=vec3(.234,-.53,-.60);p=wrist+forearm*(p-wrist);n=normalize(forearm*n);}
         else if(part>3.5)p.z-=slide;
         vec3 eye=rotation*p+translation;
         N=rotation*n; V=eye; P=position; material=color; surf=surfaceUV; label=labelUV;
-        textile=step(1.5,part)*(1.-step(3.5,part))+step(4.5,part);
+        finishType=part>5.5?2.:step(1.5,part)*(1.-step(3.5,part))+step(4.5,part);
         gl_Position=vec4(eye.xy*scale,eye.z*1.012-.12,eye.z);
       }`;
     const fs=`
       precision mediump float;
-      varying vec3 N,V,material,P; varying vec2 surf,label; varying float textile;
+      varying vec3 N,V,material,P; varying vec2 surf,label; varying float finishType;
       uniform sampler2D atlas;
       uniform vec3 key;
       uniform float exposure;
@@ -457,10 +532,19 @@
         vec2 e=min(surf,1.-surf);
         float edge=1.-smoothstep(.002,.014,min(e.x,e.y));
         vec3 col=material*(.64+.51*sun+.08*sky)+vec3(.043,.027,.009)*sun;
-        if(textile>.5){
+        if(finishType>.5 && finishType<1.5){
           float weave=sin(uv.x*2.)*sin(uv.y*2.);
           col+=vec3(spec*.026+rim*.013+fine*.67+weave*.004);
-        }else{col+=vec3(spec*.104+rim*.023+edge*.032+fine+scratch);}
+        }else{
+          col+=vec3(spec*.104+rim*.023+edge*.032+fine+scratch);
+          if(finishType>1.5){
+            float reflectedSky=smoothstep(-.38,.72,reflect(-view,n).y);
+            float metal=smoothstep(.176,.424,material.g);
+            float broadLight=pow(max(0.,dot(normalize(view+key),n)),6.);
+            col+=metal*(vec3(.094,.122,.149)*(.24+.76*reflectedSky+.38*rim)
+                     +vec3(.10,.095,.08)*broadLight);
+          }
+        }
         gl_FragColor=vec4(col*exposure,1.);
       }`;
     for(const [type,source] of [[gl.VERTEX_SHADER,vs],[gl.FRAGMENT_SHADER,fs]]){
@@ -491,7 +575,7 @@
         const uv=face.vertices.map(p=>dim.map(k=>p[k]));
         const uvs=[0,1].map(j=>uv.map(p=>p[j]));
         const lo=uvs.map(v=>Math.min(...v)),hi=uvs.map(v=>Math.max(...v));
-        const part={gun:0,mag:1,support:2,firing:3,action:4,sleeve:5}[face.group];
+        const part={gun:0,mag:1,support:2,firing:3,action:o.index===1?6:4,sleeve:5}[face.group];
         const lab=labels.indexOf(face.label),len=face.label?Math.min(250,Math.ceil(type.measureText(face.label).width)+5):0;
         const label=[[0,0],[len/256,0],[len/256,40/256],[0,40/256]];
         const start=data.length/14,base=face.base.map(v=>v/255);
@@ -588,6 +672,35 @@
     for(let i=0;i<9;i++)forearm[i]+=v[Math.floor(i/3)]*stretch*armAxis[i%3];
     return {m,pos,forearm};
   }
+  // Both perspectives sample the same cycle. The open slide follows the
+  // actual magazine and stays open if an empty reload is interrupted.
+  function pistolSlide(s){
+    const age=s.shotAge??Infinity;
+    const opening=ease(-.008,.022,age);
+    if(s.ammo===0) return opening*(1-ease(.79,.85,s.reload??-1));
+    return opening*(1-ease(.038,.125,age));
+  }
+  function pistolPose(s,model,pose,gait){
+    const aim=clamp(s.aim||0,0,1),hip=1-aim;
+    const equip=ease(0,1,s.switchProgress||0),lift=pose.lift;
+    const carry=hip*(1-lift*.68)*(1-equip),breath=Math.sin((s.time||0)*2.14)*.004*hip;
+    const kick=clamp(s.recoil||0,0,1.5),side=clamp(s.recoilSide||0,-1,1);
+    const progress=s.inspectProgress??-1;
+    const inspect=ease(0,.26,progress)*(1-ease(.70,1,progress))*(1-equip);
+    const turn=inspect*(.9+.1*ease(.35,.63,progress));
+    const pos=[mix(.57,0,aim)+breath-.12*lift+.055*side+.15*equip-.075*inspect+
+        carry*(.041*gait.step-.036*gait.crouch+.055*gait.run),
+      mix(-.53,-model.eye,aim)+breath+.275*lift+.033*pose.seat-.36*equip+.12*inspect+
+        carry*(.031*gait.bounce+.052*gait.crouch-.093*gait.run+.047*gait.rise-.12*gait.land),
+      mix(2.32,1.66,aim)-kick*(.17-.045*aim)+.09*lift-.09*inspect+
+        carry*(.029*gait.step-.063*gait.air+.055*gait.land)];
+    const m=matrix(-.33*hip-.31*lift-.95*turn-.27*equip+side*.04+carry*(.07*gait.run+.036*gait.side),
+      -.10*hip-kick*(.19-.038*aim)+.39*equip-.12*lift+.065*pose.finish+
+        carry*(.071*gait.run-.057*gait.rise+.087*gait.land),
+      .035*hip-.60*lift-.43*equip+.16*inspect-.048*pose.seat+.055*side+
+        carry*(.043*gait.step-.053*gait.crouch+.05*gait.hurt));
+    return {pos,m};
+  }
   function draw(canvas,s){
     if(!canvas||!s)return;
     const scope=s.weapon===0?clamp(s.scopeBlend||0,0,1):0;
@@ -615,26 +728,30 @@
       activeModels.delete(canvas);
       return;
     }
-    const a=clamp(s.aim||0,0,1),hip=1-a;
     const pose=reloadPose(s.reload,model.index,s.reloadEmpty);
-    const rw=pose.lift,rc=clamp(s.recoil||0,-.23,1.5),side=clamp(s.recoilSide||0,-1,1),sw=ease(0,1,s.switchProgress||0);
-    const pistol=model.index===1,gait=carryMotion(s),carry=hip*(1-rw*.68)*(1-sw);
-    const breathe=Math.sin(t*2.14)*.005;
+    const pistol=model.index===1,gait=carryMotion(s);
     let mem=activeModels.get(canvas);
     if(!mem||t<mem.time||mem.index!==model.index){mem={index:model.index,shot:s.shotSerial||0,casings:[],time:t};activeModels.set(canvas,mem);}
     mem.time=t;
-    const pos=[mix(.70,0,a)+breathe*hip-.23*rw+side*(pistol?.062:.041)+sw*(pistol?.14:-.07)+
-        carry*(gait.step*(pistol?.047:.031)-gait.crouch*(pistol?.045:.085)+gait.run*(pistol?.075:-.14)),
-      mix(-.64,-model.eye,a)+breathe*hip-sw*(pistol?.41:.31)+.24*rw+.045*pose.seat+
-        carry*(gait.bounce*(pistol?.036:.024)+.06*gait.crouch-gait.run*(pistol?.15:.11)+.05*gait.rise-gait.land*(pistol?.14:.10)),
-      mix(pistol?1.83:2.37,pistol?1.3:2.14,a)-rc*((pistol?.14:.20)-.04*a)+.12*rw+
-        carry*(.034*gait.step-.075*gait.air+.055*gait.land)];
-    const m=matrix(-.115*hip-.34*rw+side*.057+carry*(gait.run*(pistol?.06:.27)+.04*gait.side),
-      -.095*hip-rc*((pistol?.18:.105)-.032*a)+sw*(pistol?.39:.27)-.07*rw+.06*pose.finish+
-        carry*(.078*gait.run-.062*gait.rise+.091*gait.land),
-      .082*hip-.78*rw-sw*(pistol?.39:.22)+side*.064-.041*pose.seat+
-        carry*(gait.step*(pistol?.048:.027)-.063*gait.crouch+.055*gait.hurt));
-    const slide=Math.max(s.flash||0,pose.finish*.8)*(model.index===1?.19:.075);
+    let m,pos;
+    if(pistol){
+      ({m,pos}=pistolPose(s,model,pose,gait));
+    }else{
+      const a=clamp(s.aim||0,0,1),hip=1-a,rw=pose.lift;
+      const rc=clamp(s.recoil||0,-.23,1.5),side=clamp(s.recoilSide||0,-1,1);
+      const sw=ease(0,1,s.switchProgress||0),carry=hip*(1-rw*.68)*(1-sw),breathe=Math.sin(t*2.14)*.005;
+      pos=[mix(.70,0,a)+breathe*hip-.23*rw+side*.041-.07*sw+
+          carry*(gait.step*.031-gait.crouch*.085-gait.run*.14),
+        mix(-.64,-model.eye,a)+breathe*hip-sw*.31+.24*rw+.045*pose.seat+
+          carry*(.024*gait.bounce+.06*gait.crouch-.11*gait.run+.05*gait.rise-.10*gait.land),
+        mix(2.37,2.14,a)-rc*(.20-.04*a)+.12*rw+carry*(.034*gait.step-.075*gait.air+.055*gait.land)];
+      m=matrix(-.115*hip-.34*rw+side*.057+carry*(.27*gait.run+.04*gait.side),
+        -.095*hip-rc*(.105-.032*a)+sw*.27-.07*rw+.06*pose.finish+
+          carry*(.078*gait.run-.062*gait.rise+.091*gait.land),
+        .082*hip-.78*rw-sw*.22+side*.064-.041*pose.seat+
+          carry*(gait.step*.027-.063*gait.crouch+.055*gait.hurt));
+    }
+    const slide=pistol?.22*pistolSlide(s):.075*Math.max(s.flash||0,pose.finish*.8);
     const projected=gpu?gpu.draw(model,m,pos,f,w,h,pose,slide,key,exposure):
       render(model,{...target,m,pos,f,cx:w*.5,cy:h*.5,preview:false,pose,slide,key,exposure});
     if(s.flash>0){
@@ -655,5 +772,5 @@
       ctx.fillStyle='#705637';ctx.fillRect(ln*.3,-ht/2,ln*.12,ht);ctx.restore();
     }
   }
-  window.Weapon={draw,preview};
+  window.Weapon={draw,preview,pistolSlide};
 })();

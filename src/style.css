@@ -24,6 +24,19 @@ dialog,.matchcard{color:var(--fg);border:1px solid #596056;background:#1d2421;bo
 #weaponSlots{display:flex;justify-content:flex-end;gap:8px;margin-top:7px}
 #weaponSlots small{font:11px var(--sans);color:#ced4c9;border-bottom:2px solid transparent;padding-bottom:2px}
 #weaponSlots .equipped{color:#ffd0a0;border-color:var(--orange)}
+.weaponTitle{display:flex;align-items:center;justify-content:flex-end;gap:8px}
+.sidearmIcon,.pistolRounds{display:none}
+.munition.pistol{background:linear-gradient(112deg,#171e22db,#152024ed);border-color:#d9b88b}
+.pistol .weaponTitle{justify-content:space-between;color:#ecebe2}
+.pistol .sidearmIcon{display:block;width:51px;height:26px;color:#c5cfca}
+.pistol #ammoLine{font-variant-numeric:tabular-nums}
+.pistol .pistolRounds{display:block;height:5px;margin:3px 0 5px;background:#55605f;
+  mask:linear-gradient(90deg,#000 calc(100% - 2px),transparent 0) 0 0 / calc(100% / var(--capacity)) 100% repeat-x}
+#roundsFill{display:block;height:100%;transform-origin:left;background:#e2d7b9}
+.lowRounds #roundsFill{background:#ffc07a}.lowRounds #ammo{color:#ffc07a}
+#pistolHint{display:flex;align-items:center;gap:4px;margin-right:auto}
+#pistolHint small{color:#ffd4a1}#pistolHint kbd{font:700 10px var(--mono);padding:0 3px;background:#403832;color:#ffd4a1;border-color:#89765c}
+body:not([data-screen=playing]) #pistolHint{display:none}
 #knifeAction{font:600 15px var(--sans);margin:6px 0;color:#efe4d0}
 #fireSetting{display:flex;align-items:center;justify-content:flex-end;gap:6px;margin-top:5px}
 #fireModeLabel{font:600 12px var(--sans);color:#e6e9d9}

@@ -318,19 +318,35 @@ function verifyLoadout({shooter,target,clients,advance,aimAtTarget,bothSeeHp,tap
   assert.equal(state().weaponName,'P-12');
   assert.equal(state().reload,-1);
   assert.equal(remote().reload,-1);
+  key('KeyF');advance(420);
+  assert(state().inspectProgress>.25 && state().inspectProgress<.4);
+  assert.equal(remote().inspectProgress,undefined,'inspection is a local cosmetic action');
+  assert.equal(state().ammo,12);
+  advance(1050);
+  assert.equal(state().inspectProgress,-1,'inspection finishes automatically');
+  key('KeyF');shooter.right(true);
+  assert.equal(state().inspectProgress,-1,'aim immediately interrupts inspection');
+  key('KeyF');assert.equal(state().inspectProgress,-1,'inspection cannot replace aiming');
+  shooter.right(false);
   key('KeyB'); advance(150);
   assert.equal(state().fireMode,'semi');
   assert.equal(state().canToggleFireMode,false);
-  shooter.press(true); advance(750); shooter.press(false); advance(200);
+  key('KeyF');advance(125);shooter.press(true);
+  assert.equal(state().inspectProgress,-1,'a shot interrupts inspection without a cooldown');
+  assert.equal(state().ammo,11,'the same click fires');
+  advance(750); shooter.press(false); advance(200);
   assert.equal(state().ammo,11,'holding the pistol trigger consumes a single round');
   const pistolReserve=state().reserve;
-  key('KeyQ'); slot(0);
+  key('KeyF');key('KeyQ'); slot(0);
+  assert.equal(state().inspectProgress,-1,'switching away clears inspection');
   advance(1750);
   assert.equal(state().ammo,rifleAmmo,'cancelled reload must not refill the rifle in the background');
   assert.equal(state().reserve,rifleReserve);
   key('KeyQ'); slot(1);
   assert.equal(state().ammo,11);
-  key('KeyR'); advance(250);
+  key('KeyF');key('KeyR'); advance(250);
+  assert.equal(state().inspectProgress,-1,'reload cancels inspection');
+  key('KeyF');assert.equal(state().inspectProgress,-1,'reload keeps its normal input priority');
   assert(state().reload>0 && remote().reload>0,'pistol reload starts on both clients');
   key('Digit3'); slot(2);
   assert.equal(state().weaponName,'战术刀');
@@ -379,8 +395,11 @@ function verifyLoadout({shooter,target,clients,advance,aimAtTarget,bothSeeHp,tap
   tap(); advance(200);
   bothSeeHp(45);
   assert.equal(state().swingSerial,firstHit,'a click during cooldown must not start a second swing');
+  target.game.selectWeapon(1);target.key(true,'KeyF');target.key(false,'KeyF');advance(125);
+  assert(target.game.state.inspectProgress>0);
   tap(); advance(100);
   bothSeeHp(0);
+  assert.equal(target.game.state.inspectProgress,-1,'death clears the local inspection');
   assert.equal(state().kills,1);
   assert.equal(target.game.state.deaths,1);
   assert.equal(target.game.state.phase,'dead');
@@ -399,7 +418,16 @@ function verifyLoadout({shooter,target,clients,advance,aimAtTarget,bothSeeHp,tap
   key('KeyR'); advance(1700);
   assert.equal(state().ammo,12,'a completed pistol reload restores the two missing rounds');
   assert.equal(state().reserve,pistolReserve-2);
-  console.log(shooter.id+' loadout: rifle/pistol/knife, number keys, Q, wheel, cancelled reloads, networked swings, cover, reach, cooldown and respawn shield passed.');
+  shooter.look(Math.PI/2,0);
+  for(let i=0;i<12;i++) tap();
+  assert.equal(state().ammo,0);assert.equal(remote().ammo,0,'both views know when to hold the slide open');
+  key('KeyR');advance(450);
+  assert(state().reloadEmpty && remote().reloadEmpty && state().reload>0 && remote().reload>0);
+  key('Digit1');slot(0);key('Digit2');slot(1);
+  assert.equal(state().ammo,0);assert.equal(state().reload,-1);
+  key('KeyR');advance(1450);assert.equal(state().ammo,12);assert.equal(remote().ammo,12);
+  key('KeyF');shooter.blur();assert.equal(state().phase,'paused');assert.equal(state().inspectProgress,-1);
+  console.log(shooter.id+' loadout: all slots, pistol inspection and interrupts, empty reloads, remote magazine counts, knife reach, cooldown and respawn shield passed.');
 }
 
 if (require.main===module) {

@@ -37,7 +37,7 @@ for(let dir=0;dir<8;dir++){
   if(actor.weapon===2) assert(spawned.magShift.every(v=>v===0),'knife has no third-person magazine motion');
   else assert(spawned.magShift[1]<-.16);
 }
-const source=fs.readFileSync(__dirname+'/../src/weapon.js','utf8').replace('window.Weapon={draw,preview}', 'window.Weapon={draw,preview,reloadPose,knifePose,models}');
+const source=fs.readFileSync(__dirname+'/../src/weapon.js','utf8').replace('window.Weapon={', 'window.Weapon={reloadPose,knifePose,pistolPose,carryMotion,models,');
 vm.runInContext(source,context);
 const W=context.window.Weapon;
 assert.equal(W.models.length,3);
@@ -62,6 +62,27 @@ function transform(m,pos,point) {
   return pos.map((v,i)=>v+m[i*3]*point[0]+m[i*3+1]*point[1]+m[i*3+2]*point[2]);
 }
 const distance=(a,b)=>Math.hypot(...a.map((v,i)=>v-b[i]));
+const pistol=W.models[1];
+const idle=W.reloadPose(-1,1,false);
+function posedPistol(state,point){
+  const {m,pos}=W.pistolPose(state,pistol,idle,W.carryMotion(state));
+  return transform(m,pos,point);
+}
+const tip=[0,.12,pistol.tip],hipTip=posedPistol({},tip);
+assert(distance(hipTip,posedPistol({inspectProgress:.5},tip))>.55,'inspection presents the side profile');
+assert(distance(hipTip,posedPistol({inspectProgress:1},tip))<.001,'inspection returns to the original grip');
+assert(distance(hipTip,posedPistol({switchProgress:1},tip))>.24,'equipping the pistol has a distinct draw');
+assert(distance(hipTip,posedPistol({recoil:.8},tip))>.09,'pistol firing animates the viewmodel');
+const sight=posedPistol({aim:1},[0,pistol.eye,pistol.tip]);
+assert(Math.abs(sight[0])+Math.abs(sight[1])<1e-7,'steady pistol sights align with the aim point');
+const full=age=>W.pistolSlide({ammo:11,shotAge:age,reload:-1});
+assert(full(0)<.3 && full(.03)>.99 && full(.075)<.85 && full(.14)===0);
+for(const age of [.05,.20,2])assert.equal(W.pistolSlide({ammo:0,shotAge:age,reload:-1}),1);
+for(const t of [0,.4,.78])assert.equal(W.pistolSlide({ammo:0,reload:t}),1);
+assert(W.pistolSlide({ammo:0,reload:.82})>0 && W.pistolSlide({ammo:0,reload:.82})<1);
+assert.equal(W.pistolSlide({ammo:0,reload:.9}),0);
+assert.equal(W.pistolSlide({ammo:0,reload:-1}),1,'cancelled empty reload returns to the open slide');
+assert.equal(W.pistolSlide({ammo:12,reload:-1}),0,'a fresh magazine restores the resting slide');
 const cameraTip=(progress,serial,equip=0)=>{
   const pose=W.knifePose({swingProgress:progress,swingSerial:serial,switchProgress:equip});
   assert([...pose.m,...pose.pos].every(Number.isFinite));
